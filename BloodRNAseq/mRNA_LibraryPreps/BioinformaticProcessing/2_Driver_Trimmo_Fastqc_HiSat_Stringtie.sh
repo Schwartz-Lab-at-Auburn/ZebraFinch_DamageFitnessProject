@@ -131,7 +131,7 @@ COUNTSDIR="${HOMEDIR}/COUNTS"
 #--Load modules needed for job
 
 module load fastqc/0.12.0
-module load python/anaconda/3.11.7   # Needed for Mutliqc
+#module load python/anaconda/3.11.7   # Needed for Mutliqc
 module load trimmomatic/0.39
 module load gcc/4.8.5 			     # Needed for Samtools 1.20
 module load samtools/1.20
