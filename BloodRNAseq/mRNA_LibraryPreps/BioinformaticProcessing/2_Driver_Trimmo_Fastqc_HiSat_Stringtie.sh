@@ -155,8 +155,8 @@ cd /home/tss0019/ZebraFinch_AllBlood
 ############# Run FASTQC (Again on the clean data)
 ./2.5_FASTQC-POST.sh "$sample_id"
 
-### Run Multiqc to summarize the fastqc data
-multiqc "$CLQCDATA" -o "$CLQCDATA"
+### Run Multiqc to summarize the fastqc data - Run this seperately when FASTQC is finished for all samples
+## multiqc "$CLQCDATA" -o "$CLQCDATA"
  
 ############# Run Mapping
 ./3_MAP_HISAT2.sh "$sample_id"
@@ -167,9 +167,9 @@ multiqc "$CLQCDATA" -o "$CLQCDATA"
 ############# Run Stringtime to count the reads mapped to each gene
 ./5_COUNT-StringTie.sh "$sample_id"
 
-############# Complie the counts into a single file
+############# Complie the counts into a single file - Run this seperately when all jobs have finished.
  # run the python script prepDE.py3 to prepare the data for downstream analysis.
-python /hosted/biosc/SchwartzLab/useful_scripts_files/prepDE.py3 -i "${COUNTSDIR}"
+## python /hosted/biosc/SchwartzLab/useful_scripts_files/prepDE.py3 -i "${COUNTSDIR}"
 
 # __________________________
 
