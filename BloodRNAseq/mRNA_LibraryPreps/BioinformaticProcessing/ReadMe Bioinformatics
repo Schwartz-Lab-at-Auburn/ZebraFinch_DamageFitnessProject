@@ -1,0 +1,13 @@
+Process.
+1. If an individual has more than 1 R1 and R2 files, then concatenate all the R1 files from an individual, and all the R2 files from an indiviudal. Put in a new folder for easy processing.
+2. Run FASTQC and evaluate what cleanning is needed. Pay particular attention to adpater.
+  Can use dthe 1_Driver script to do this as an array job.
+  Run MultiQC on the fastqc folder to get summary across all the FASTQC outputs
+3. Run the pipelien - can use the 2_Driver script to do as an array job
+  - Trim (Trimmomatic)
+  - Run Fastqc on cleaned data
+  - Map to NCBI reference genome (HiSat2)
+  - Process Sam to Bam; Sort Bam, Index, Stats (Samtools)
+  - Count the mapped reads to gene (Stringtie)
+4.   Run MultiQC on the CLEANED fastqc folder to get summary across all the FASTQC outputs
+     Run prepDE.py on the Stringtie folder to combine the genecounts into a single file to use for statistical analyes.
