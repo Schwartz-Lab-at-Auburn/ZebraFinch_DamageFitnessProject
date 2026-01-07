@@ -11,3 +11,6 @@ Process.
   - Count the mapped reads to gene (Stringtie)
 4.   Run MultiQC on the CLEANED fastqc folder to get summary across all the FASTQC outputs
      Run prepDE.py on the Stringtie folder to combine the genecounts into a single file to use for statistical analyes.
+
+See more detailed notes on the analysis here:
+ /Box/NSF_Damage-Fitness project-Research/Experiment_2024Fall_AcuteHeat_DamageBiomarkers_Exp1/Data/DataAnalyses/RNAseq 
