@@ -1,0 +1,1185 @@
+---
+title: "ZebraFinch Acute Heat Damage Biomarker Experiment 1: Liver RNAseq (Heat vs Control)"
+author: "Ali Amer"
+output:
+  html_document:
+    df_print: paged
+
+---
+
+# Script Goal: 
+# 1. Convert raw count reads of samples sent for liver RNA-Seq (A vs B) from prep.dy script   
+# 2. Check library sizes across A vs B & Normalize raw count data
+# 3. Run DGE with edgeR, limma and DESeq2 (Males Only & Females Only)
+# 4. Run Pathway Enrichment & WGCNA
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, 
+                      fig.width = 10, fig.height = 8)
+
+# Clear memory
+rm(list=ls(all = TRUE))
+
+# Check working directory 
+getwd()
+
+```
+
+```{r}
+
+# Read in Acute Heat Damage Biomarker Experiment 1 MasterSpreadSheet
+MasterSpreadsheet <- read.csv(
+  "AHDB_Exp1_MasterSpreadSheet.csv",
+  header = TRUE,
+  stringsAsFactors = FALSE
+)
+str(MasterSpreadsheet)
+
+# Read in Sample List of Samples Sent for RNA Seq
+ZF_Liver_sample_list <- read.csv(
+  "ZF_Liver_sample_list.csv",
+  header = TRUE,
+  stringsAsFactors = FALSE
+)
+str(ZF_Liver_sample_list)
+dim(ZF_Liver_sample_list)
+
+# Read in Raw Count Data
+Raw_Counts <- read.csv(
+  "ZF_Liver_rawgene_count_matrix.csv",
+  row.names = 1,
+  header = TRUE,
+  check.names = FALSE  
+)
+
+head(colnames(Raw_Counts))
+dim(Raw_Counts)
+
+# Store initial gene count
+initial_gene_count <- nrow(Raw_Counts)
+
+cat("Initial raw gene count:", initial_gene_count, "\n")
+cat("Number of samples:", ncol(Raw_Counts), "\n\n")
+
+```
+
+# Subset & Align AHDB Exp1 Master File with RNASeq Sample List 
+
+```{r}
+
+# Extract numeric band ID from Individual_ID
+ZF_Liver_sample_list$ID_Band <- as.numeric(
+  sub("^ZF_", "", ZF_Liver_sample_list$Sample_ID)
+)
+head(ZF_Liver_sample_list)
+
+# Subset data from master file
+Master_Spreadsheet_RNAseq_subset <- MasterSpreadsheet[
+  MasterSpreadsheet$ID_Band %in% ZF_Liver_sample_list$ID_Band,
+]
+
+# Remove Baseline and Heat Timepoint Columns
+Master_Spreadsheet_RNAseq_subset <- subset(
+  Master_Spreadsheet_RNAseq_subset,
+  TimePoint != "Baseline" & TimePoint != "Heat"
+)
+
+# Final check
+all(Master_Spreadsheet_RNAseq_subset$ID_Band %in% ZF_Liver_sample_list$ID_Band)
+# All ID_Bands match
+
+# Re-write treatment column
+Master_Spreadsheet_RNAseq_subset$Treatment <- dplyr::recode(
+  Master_Spreadsheet_RNAseq_subset$Treatment,
+  "A" = "Control",
+  "B" = "Heat",
+  "C" = "Heat_2-HR_Repair",
+  "D" = "Heat_24-HR_Repair",
+  "E" = "Heat_2-WK_Repair"
+)
+
+# Confirm correct treatment distribution - 70 total (20 Individuals in A & B each, 10 Indviduals in C through E) 
+cat("\n TREATMENT GROUP DISTRIBUTION \n")
+print(table(Master_Spreadsheet_RNAseq_subset$Treatment))
+head(Master_Spreadsheet_RNAseq_subset) 
+
+```
+
+# Merge Raw Count Data with MasterSpreadsheet that was aligned with RNA-Seq Sample ID List
+
+```{r}
+
+# Merge all RNAseq samples with metadata
+Master_Spreadsheet_Full <- merge(
+  Master_Spreadsheet_RNAseq_subset,
+  ZF_Liver_sample_list[, c("ID_Band", "RNAseq_Sample_ID")],
+  by = "ID_Band",
+  all.x = TRUE
+)
+
+rownames(Master_Spreadsheet_Full) <- Master_Spreadsheet_Full$RNAseq_Sample_ID
+
+# Add Count Data for all samples
+Counts_Full <- Raw_Counts[, rownames(Master_Spreadsheet_Full)]
+
+# Verify alignment
+cat("Counts columns match metadata rows:", 
+    all(colnames(Counts_Full) == rownames(Master_Spreadsheet_Full)), "\n")
+
+```
+
+# Subset Data for A (Control) vs B (Heat) Comparison
+
+```{r}
+
+# Subset experimental data for Control vs Heat
+AHDB1_AB <- subset(
+  Master_Spreadsheet_RNAseq_subset,
+  Treatment %in% c("Control", "Heat")
+)
+cat("Subset dimensions:", nrow(AHDB1_AB), "samples\n")
+
+AHDB1_AB <- merge(
+  AHDB1_AB,
+  ZF_Liver_sample_list[, c("ID_Band", "RNAseq_Sample_ID")],
+  by = "ID_Band",
+  all.x = TRUE
+)
+
+rownames(AHDB1_AB) <- AHDB1_AB$RNAseq_Sample_ID
+
+# Subset Count Data
+Counts_AB <- Raw_Counts[, rownames(AHDB1_AB)]
+
+# Construct DGEList object
+dge_AB <- DGEList(
+  counts  = Counts_AB,
+  samples = AHDB1_AB
+)
+
+# Sanity check
+cat("\nTreatment by Sex distribution:\n")
+print(table(dge_AB$samples$Treatment, dge_AB$samples$Sex))
+cat("\nDGEList object created:", class(dge_AB), "\n")
+cat("Samples:", ncol(dge_AB), "\n")
+cat("Genes (before filtering):", nrow(dge_AB), "\n\n")
+
+```
+
+# Calculate Library Size & Make BoxPlots (A vs B)
+
+```{r}
+
+cpm_AB <- cpm(dge_AB)
+lcpm_AB <- cpm(dge_AB, log=TRUE)
+summary(lcpm_AB)
+
+# Boxplot by Treatment
+png(
+  filename = "Results/LibrarySize/LibrarySize_by_Treatment_AB.png",
+  width = 6,
+  height = 5,
+  units = "in",
+  res = 300
+)
+
+boxplot(
+  dge_AB$samples$lib.size/1e6 ~ dge_AB$samples$Treatment,
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment (Control vs Heat)",
+  col = c("lightblue", "coral"),
+  outline = FALSE
+)
+
+# Boxplot by Treatment & Sex
+png(
+  filename = "Results/LibrarySize/LibrarySize_by_Treatment_and_Sex_AB.png",
+  width = 8,
+  height = 5,
+  units = "in",
+  res = 300
+)
+
+boxplot(
+  dge_AB$samples$lib.size/1e6 ~ interaction(dge_AB$samples$Treatment, dge_AB$samples$Sex),
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment and Sex (Control vs Heat)",
+  las = 3,
+  col = rep(c("lightblue", "coral"), 2),
+  outline = FALSE
+)
+
+# Display
+par(mfrow = c(1, 2))
+boxplot(
+  dge_AB$samples$lib.size/1e6 ~ dge_AB$samples$Treatment,
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment",
+  col = c("lightblue", "coral"),
+  outline = FALSE
+)
+boxplot(
+  dge_AB$samples$lib.size/1e6 ~ interaction(dge_AB$samples$Treatment, dge_AB$samples$Sex),
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment and Sex",
+  xlab = "",
+  las = 3,
+  col = rep(c("lightblue", "coral"), 2),
+  outline = FALSE
+)
+
+```
+
+# Differential Gene Expression w/ EdgeR, Limma, DESeq2 (Male ZEFI's Only)
+
+```{r}
+
+library(ggplot2)
+
+### DGE with Edge R ###
+
+library(edgeR)
+
+AHDB1_AB_Male <- subset(
+  AHDB1_AB,
+  Sex == "M"
+)
+
+dim(AHDB1_AB_Male)
+
+Counts_AB_Male <- Raw_Counts[, rownames(AHDB1_AB_Male)]
+
+dge_AB_Male <- DGEList(
+  counts  = Counts_AB_Male,
+  samples = AHDB1_AB_Male
+)
+
+# Set factor and build design matrix
+dge_AB_Male$samples$Treatment <- droplevels(factor(dge_AB_Male$samples$Treatment))
+
+design_male <- model.matrix(~ 0 + Treatment, data = dge_AB_Male$samples)
+colnames(design_male) <- levels(dge_AB_Male$samples$Treatment)
+table(dge_AB_Male$samples$Treatment)
+
+cat("Total genes (before filtering):", nrow(dge_AB_Male), "\n\n")
+
+# filter using the design matrix
+keep_male <- filterByExpr(dge_AB_Male, design_male)
+dge_AB_Male <- dge_AB_Male[keep_male, , keep.lib.sizes = FALSE]
+cat("Total genes (after filtering):", nrow(dge_AB_Male), "\n\n")
+
+# TMM normalization
+dge_AB_Male <- calcNormFactors(dge_AB_Male, method = "TMM")
+
+dge_AB_Male <- estimateDisp(dge_AB_Male, design_male)
+fit_male <- glmQLFit(dge_AB_Male, design_male)
+
+contrast_male <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_male
+)
+cat("Contrast")
+print(contrast_male)
+
+qlf_male <- glmQLFTest(fit_male, contrast = contrast_male)
+
+DEG_male <- topTags(qlf_male, n = Inf)$table
+DEG_male$Gene_ID <- rownames(DEG_male)
+
+sig_male <- DEG_male[DEG_male$FDR < 0.05, ]
+sig_male_up <- sig_male[sig_male$logFC > 0, ]
+sig_male_down <- sig_male[sig_male$logFC < 0, ]
+
+cat("Male-Only DEG Results - EdgeR")
+cat("Total significant DEGs:", nrow(sig_male), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_down), "\n\n")
+
+# This needs to be fixed....
+
+write.csv(DEG_male, "Results/DGE/Male_Only/DEG_Male_Heat_vs_Control_All.csv", 
+          row.names = FALSE)
+write.csv(sig_male, "Results/DGE/Male_Only/DEG_Male_Heat_vs_Control_Significant.csv", 
+          row.names = FALSE)
+write.csv(sig_male_up, "Results/DGE/Male_Only/DEG_Male_Upregulated.csv", 
+          row.names = FALSE)
+write.csv(sig_male_down, "Results/DGE/Male_Only/DEG_Male_Downregulated.csv", 
+          row.names = FALSE)
+
+### DGE with limma-voom ###
+
+library(limma)
+
+dge_AB_Male_voom <- DGEList(
+  counts  = Counts_AB_Male,
+  samples = AHDB1_AB_Male
+)
+
+# Sanity Check
+table(dge_AB_Male_voom$samples$Treatment)
+cat("Male-Only Subset\n")
+cat("Total genes (before filtering):", nrow(dge_AB_Male_voom), "\n\n")
+
+dge_AB_Male_voom$samples$Treatment <- droplevels(factor(dge_AB_Male_voom$samples$Treatment))
+
+design_male_voom <- model.matrix(~ 0 + Treatment, data = dge_AB_Male_voom$samples)
+colnames(design_male_voom) <- levels(dge_AB_Male_voom$samples$Treatment)
+
+keep_male_voom <- filterByExpr(dge_AB_Male_voom, design_male_voom)
+dge_AB_Male_voom <- dge_AB_Male_voom[keep_male_voom, , keep.lib.sizes = FALSE]
+
+cat("Genes after filtering:", nrow(dge_AB_Male_voom), "\n\n")
+
+dge_AB_Male_voom <- calcNormFactors(dge_AB_Male_voom, method = "TMM")
+
+v_male <- voom(dge_AB_Male_voom, design_male_voom, plot = TRUE)
+
+fit_male_voom <- lmFit(v_male, design_male_voom)
+
+contrast_male_voom <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_male_voom
+)
+cat("Contrast:\n")
+print(contrast_male_voom)
+
+fit_male_voom <- contrasts.fit(fit_male_voom, contrast_male_voom)
+fit_male_voom <- eBayes(fit_male_voom)
+
+DEG_male_voom <- topTable(fit_male_voom, coef = "Heat_vs_Control", n = Inf, sort.by = "P")
+DEG_male_voom$Gene_ID <- rownames(DEG_male_voom)
+
+sig_male_voom <- DEG_male_voom[DEG_male_voom$adj.P.Val < 0.05, ]
+sig_male_voom_up <- sig_male_voom[sig_male_voom$logFC > 0, ]
+sig_male_voom_down <- sig_male_voom[sig_male_voom$logFC < 0, ]
+
+cat("Male-Only DEG Results (limma-voom)\n")
+cat("Total significant DEGs:", nrow(sig_male_voom), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_voom_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_voom_down), "\n\n")
+
+# Need to fix (i.e,. make correct directories)
+write.csv(DEG_male_voom, "Results/DGE/Male_Only/Voom_DEG_Male_Heat_vs_Control_All.csv",
+          row.names = FALSE)
+write.csv(sig_male_voom, "Results/DGE/Male_Only/Voom_DEG_Male_Heat_vs_Control_Significant.csv",
+          row.names = FALSE)
+write.csv(sig_male_voom_up, "Results/DGE/Male_Only/Voom_DEG_Male_Upregulated.csv",
+          row.names = FALSE)
+write.csv(sig_male_voom_down, "Results/DGE/Male_Only/Voom_DEG_Male_Downregulated.csv",
+          row.names = FALSE)
+
+# Plot mean variance trend
+v_male <- voom(dge_AB_Male_voom, design_male_voom, plot = TRUE)
+
+### DGE with DESeq2 ###
+
+library(DESeq2)
+
+AHDB1_AB_Male_deseq <- subset(AHDB1_AB, Sex == "M")
+Counts_AB_Male_deseq <- Raw_Counts[, rownames(AHDB1_AB_Male_deseq)]
+
+Counts_AB_Male_int <- round(Counts_AB_Male_deseq)
+
+# Build colData and set reference level
+col_data_male <- AHDB1_AB_Male_deseq
+col_data_male$Treatment <- droplevels(factor(col_data_male$Treatment))
+col_data_male$Treatment <- relevel(col_data_male$Treatment, ref = "Control")
+
+cat("Male-Only Subset\n")
+cat("Total genes (before filtering):", nrow(Counts_AB_Male_int), "\n\n")
+
+# Build DESeq2 object
+dds_male <- DESeqDataSetFromMatrix(
+  countData = Counts_AB_Male_int,
+  colData   = col_data_male,
+  design    = ~ Treatment
+)
+
+keep_male_deseq <- rowSums(counts(dds_male)) >= 10
+dds_male <- dds_male[keep_male_deseq, ]
+cat("Genes after filtering:", nrow(dds_male), "\n\n")
+
+dds_male <- DESeq(dds_male)
+
+res_male <- results(
+  dds_male,
+  contrast = c("Treatment", "Heat", "Control"),
+  alpha    = 0.05
+)
+
+summary(res_male)
+
+DEG_male_deseq <- as.data.frame(res_male)
+DEG_male_deseq$Gene_ID <- rownames(DEG_male_deseq)
+
+# Remove NA's
+DEG_male_deseq <- DEG_male_deseq[
+  !is.na(DEG_male_deseq$padj) & !is.na(DEG_male_deseq$log2FoldChange),
+]
+cat("Genes after NA removal:", nrow(DEG_male_deseq), "\n\n")
+
+# Subset DEG"s into upregulated and downregulated 
+
+sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.05, ]
+sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 0, ]
+sig_male_deseq_down <- sig_male_deseq[sig_male_deseq$log2FoldChange < 0, ]
+
+cat("Male-Only DEG Results (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_male_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_deseq_down), "\n\n")
+
+write.csv(DEG_male_deseq,      "Results/DGE/Male_Only/DESeq2_DEG_Male_Heat_vs_Control_All.csv",         row.names = FALSE)
+write.csv(sig_male_deseq,      "Results/DGE/Male_Only/DESeq2_DEG_Male_Heat_vs_Control_Significant.csv", row.names = FALSE)
+write.csv(sig_male_deseq_up,   "Results/DGE/Male_Only/DESeq2_DEG_Male_Upregulated.csv",                 row.names = FALSE)
+write.csv(sig_male_deseq_down, "Results/DGE/Male_Only/DESeq2_DEG_Male_Downregulated.csv",               row.names = FALSE)
+
+# Volcano Plots for all three methods
+
+library(patchwork)
+library(ggVennDiagram)
+
+# edgeR volcano 
+make_volcano <- function(deg_df, title) {
+  deg_df$Significance <- "NS"
+  deg_df$Significance[deg_df$FDR < 0.05 & deg_df$logFC > 0] <- "Up in Heat"
+  deg_df$Significance[deg_df$FDR < 0.05 & deg_df$logFC < 0] <- "Down in Heat"
+  deg_df$Significance <- factor(deg_df$Significance,
+                                levels = c("Up in Heat", "Down in Heat", "NS"))
+  ggplot(deg_df, aes(x = logFC, y = -log10(FDR), color = Significance)) +
+    geom_point(alpha = 0.6, size = 1.2) +
+    scale_color_manual(values = c(
+      "Up in Heat"   = "#F08080",
+      "Down in Heat" = "#6BAED6",
+      "NS"           = "#AAAAAA"
+    )) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed",
+               color = "black", linewidth = 0.5) +
+    labs(title = title, x = "log2 Fold Change", y = "-log10(FDR)", color = NULL) +
+    theme_bw(base_size = 13) +
+    theme(
+      plot.title       = element_text(face = "bold", hjust = 0.5),
+      legend.position  = "bottom",
+      legend.text      = element_text(size = 11),
+      panel.grid.minor = element_blank()
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3)))
+}
+
+# limma-voom volcano 
+make_volcano_voom <- function(deg_df, title) {
+  deg_df$Significance <- "NS"
+  deg_df$Significance[deg_df$adj.P.Val < 0.05 & deg_df$logFC > 0] <- "Up in Heat"
+  deg_df$Significance[deg_df$adj.P.Val < 0.05 & deg_df$logFC < 0] <- "Down in Heat"
+  deg_df$Significance <- factor(deg_df$Significance,
+                                levels = c("Up in Heat", "Down in Heat", "NS"))
+  ggplot(deg_df, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
+    geom_point(alpha = 0.6, size = 1.2) +
+    scale_color_manual(values = c(
+      "Up in Heat"   = "#F08080",
+      "Down in Heat" = "#6BAED6",
+      "NS"           = "#AAAAAA"
+    )) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed",
+               color = "black", linewidth = 0.5) +
+    labs(title = title, x = "log2 Fold Change", y = "-log10(adj.P.Val)", color = NULL) +
+    theme_bw(base_size = 13) +
+    theme(
+      plot.title       = element_text(face = "bold", hjust = 0.5),
+      legend.position  = "bottom",
+      legend.text      = element_text(size = 11),
+      panel.grid.minor = element_blank()
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3)))
+}
+
+# DESeq2 volcano 
+make_volcano_deseq <- function(deg_df, title) {
+  deg_df$Significance <- "NS"
+  deg_df$Significance[deg_df$padj < 0.05 & deg_df$log2FoldChange > 0] <- "Up in Heat"
+  deg_df$Significance[deg_df$padj < 0.05 & deg_df$log2FoldChange < 0] <- "Down in Heat"
+  deg_df$Significance <- factor(deg_df$Significance,
+                                levels = c("Up in Heat", "Down in Heat", "NS"))
+  ggplot(deg_df, aes(x = log2FoldChange, y = -log10(padj), color = Significance)) +
+    geom_point(alpha = 0.6, size = 1.2) +
+    scale_color_manual(values = c(
+      "Up in Heat"   = "#F08080",
+      "Down in Heat" = "#6BAED6",
+      "NS"           = "#AAAAAA"
+    )) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed",
+               color = "black", linewidth = 0.5) +
+    labs(title = title, x = "log2 Fold Change", y = "-log10(padj)", color = NULL) +
+    theme_bw(base_size = 13) +
+    theme(
+      plot.title       = element_text(face = "bold", hjust = 0.5),
+      legend.position  = "bottom",
+      legend.text      = element_text(size = 11),
+      panel.grid.minor = element_blank()
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3)))
+}
+
+# Build and combine
+p_edger <- make_volcano(DEG_male,             "edgeR")
+p_voom  <- make_volcano_voom(DEG_male_voom,   "limma-voom")
+p_deseq <- make_volcano_deseq(DEG_male_deseq, "DESeq2")
+
+combined_volcano <- (p_edger | p_voom | p_deseq) +
+  plot_annotation(
+    title    = "Heat vs Control — Males Only",
+    subtitle = "edgeR  |  limma-voom  |  DESeq2",
+    theme    = theme(
+      plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40")
+    )
+  ) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+print(combined_volcano)
+
+ggsave("Results/DGE/Male_Only/Volcano_Male_All_Methods.png",
+       combined_volcano, width = 18, height = 6, dpi = 300)
+
+venn_list <- list(
+  edgeR        = rownames(sig_male),
+  `limma-voom` = rownames(sig_male_voom),
+  DESeq2       = sig_male_deseq$Gene_ID
+)
+
+venn_up <- list(
+  edgeR        = rownames(sig_male_up),
+  `limma-voom` = rownames(sig_male_voom_up),
+  DESeq2       = sig_male_deseq_up$Gene_ID
+)
+
+venn_down <- list(
+  edgeR        = rownames(sig_male_down),
+  `limma-voom` = rownames(sig_male_voom_down),
+  DESeq2       = sig_male_deseq_down$Gene_ID
+)
+
+# All DEGs
+p_venn <- ggVennDiagram(venn_list, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#2171B5") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "All DEGs") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+# Upregulated
+p_venn_up <- ggVennDiagram(venn_up, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#FFF5F0", high = "#CB181D") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "Upregulated in Heat") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+# Downregulated
+p_venn_down <- ggVennDiagram(venn_down, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#2171B5") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "Downregulated in Heat") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+# Combined Venn
+combined_venn <- (p_venn / (p_venn_up | p_venn_down)) +
+  plot_annotation(
+    title = "DEG Overlap Across Methods — Males (Heat vs Control)",
+    theme = theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5))
+  )
+
+print(combined_venn)
+
+ggsave("Results/DGE/Male_Only/Venn_Male_Combined.png",
+       combined_venn, width = 12, height = 12, dpi = 300)
+
+consensus_all  <- Reduce(intersect, venn_list)
+consensus_up   <- Reduce(intersect, venn_up)
+consensus_down <- Reduce(intersect, venn_down)
+
+cat("Genes significant in all 3 methods:", length(consensus_all), "\n")
+cat("Upregulated in all 3 methods:", length(consensus_up), "\n")
+cat("Downregulated in all 3 methods:", length(consensus_down), "\n")
+
+# Need to fix
+write.csv(data.frame(Gene_ID = consensus_all),
+          "Results/DGE/Male_Only/Consensus_DEGs_All_Methods.csv",    row.names = FALSE)
+write.csv(data.frame(Gene_ID = consensus_up),
+          "Results/DGE/Male_Only/Consensus_DEGs_Upregulated.csv",    row.names = FALSE)
+write.csv(data.frame(Gene_ID = consensus_down),
+          "Results/DGE/Male_Only/Consensus_DEGs_Downregulated.csv",  row.names = FALSE)
+
+# Compare top 100 DEG's across three methods
+
+# edgeR — ranked by FDR
+top100_edger <- DEG_male[order(DEG_male$FDR), ][1:100, ]
+genes_top100_edger <- rownames(top100_edger)
+
+# limma-voom — ranked by adj.P.Val
+top100_voom <- DEG_male_voom[order(DEG_male_voom$adj.P.Val), ][1:100, ]
+genes_top100_voom <- rownames(top100_voom)
+
+# DESeq2 — ranked by padj
+top100_deseq <- DEG_male_deseq[order(DEG_male_deseq$padj), ][1:100, ]
+genes_top100_deseq <- top100_deseq$Gene_ID
+
+overlap_er_voom  <- intersect(genes_top100_edger, genes_top100_voom)
+overlap_er_deseq <- intersect(genes_top100_edger, genes_top100_deseq)
+overlap_voom_deseq <- intersect(genes_top100_voom, genes_top100_deseq)
+overlap_all      <- Reduce(intersect, list(genes_top100_edger, genes_top100_voom, genes_top100_deseq))
+
+cat("edgeR ∩ limma-voom:          ", length(overlap_er_voom), "\n")
+cat("edgeR ∩ DESeq2:              ", length(overlap_er_deseq), "\n")
+cat("limma-voom ∩ DESeq2:         ", length(overlap_voom_deseq), "\n")
+cat("All three methods:           ", length(overlap_all), "\n")
+
+# 77 genes in top 100 common across all three methods. 
+
+cat("Genes in all 3 top 100 lists:\n")
+print(overlap_all)
+
+venn_top100 <- list(
+  edgeR        = genes_top100_edger,
+  `limma-voom` = genes_top100_voom,
+  DESeq2       = genes_top100_deseq
+)
+
+p_venn_top100 <- ggVennDiagram(venn_top100, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#2171B5") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "Top 100 DEG Overlap Across Methods — Males (Heat vs Control)") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+print(p_venn_top100)
+
+ggsave("Results/DGE/Male_Only/Venn_Top100_Male_All_Methods.png",
+       p_venn_top100, width = 7, height = 6, dpi = 300)
+
+
+# Build a summary table showing rank of each consensus gene in each method
+rank_edger <- data.frame(
+  Gene_ID   = rownames(DEG_male[order(DEG_male$FDR), ]),
+  Rank_edgeR = seq_len(nrow(DEG_male))
+)
+
+rank_voom <- data.frame(
+  Gene_ID    = rownames(DEG_male_voom[order(DEG_male_voom$adj.P.Val), ]),
+  Rank_voom  = seq_len(nrow(DEG_male_voom))
+)
+
+rank_deseq <- data.frame(
+  Gene_ID     = DEG_male_deseq$Gene_ID[order(DEG_male_deseq$padj)],
+  Rank_DESeq2 = seq_len(nrow(DEG_male_deseq))
+)
+
+# Merge on consensus top 100 genes
+rank_table <- data.frame(Gene_ID = overlap_all) %>%
+  merge(rank_edger,  by = "Gene_ID") %>%
+  merge(rank_voom,   by = "Gene_ID") %>%
+  merge(rank_deseq,  by = "Gene_ID") %>%
+  arrange(Rank_edgeR)
+
+cat("\nRank comparison for genes in all 3 top 100 lists:\n")
+print(rank_table)
+
+write.csv(rank_table,
+          "Results/DGE/Male_Only/Top100_Consensus_RankComparison.csv",
+          row.names = FALSE)
+
+```
+
+# Differential Gene Expression w/ EdgeR, Limma, DESeq2 (Female ZEFI's Only)
+
+```{r}
+
+library(ggplot2)
+
+### DGE with Edge R ###
+
+library(edgeR)
+
+AHDB1_AB_Female <- subset(AHDB1_AB, Sex == "F")
+
+dim(AHDB1_AB_Female)
+
+Counts_AB_Female <- Raw_Counts[, rownames(AHDB1_AB_Female)]
+
+dge_AB_Female <- DGEList(
+  counts  = Counts_AB_Female,
+  samples = AHDB1_AB_Female
+)
+
+# Set factor and build design matrix
+dge_AB_Female$samples$Treatment <- droplevels(factor(dge_AB_Female$samples$Treatment))
+
+design_female <- model.matrix(~ 0 + Treatment, data = dge_AB_Female$samples)
+colnames(design_female) <- levels(dge_AB_Female$samples$Treatment)
+table(dge_AB_Female$samples$Treatment)
+
+cat("Total genes (before filtering):", nrow(dge_AB_Female), "\n\n")
+
+# filter using the design matrix
+keep_female <- filterByExpr(dge_AB_Female, design_female)
+dge_AB_Female <- dge_AB_Female[keep_female, , keep.lib.sizes = FALSE]
+cat("Total genes (after filtering):", nrow(dge_AB_Female), "\n\n")
+
+# TMM normalization
+dge_AB_Female <- calcNormFactors(dge_AB_Female, method = "TMM")
+
+dge_AB_Female <- estimateDisp(dge_AB_Female, design_female)
+fit_female <- glmQLFit(dge_AB_Female, design_female)
+
+contrast_female <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_female
+)
+cat("Contrast")
+print(contrast_female)
+
+qlf_female <- glmQLFTest(fit_female, contrast = contrast_female)
+
+DEG_female <- topTags(qlf_female, n = Inf)$table
+DEG_female$Gene_ID <- rownames(DEG_female)
+
+sig_female      <- DEG_female[DEG_female$FDR < 0.05, ]
+sig_female_up   <- sig_female[sig_female$logFC > 0, ]
+sig_female_down <- sig_female[sig_female$logFC < 0, ]
+
+cat("Female-Only DEG Results - EdgeR")
+cat("Total significant DEGs:", nrow(sig_female), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_down), "\n\n")
+
+write.csv(DEG_female,      "Results/DGE/Female_Only/DEG_Female_Heat_vs_Control_All.csv",         row.names = FALSE)
+write.csv(sig_female,      "Results/DGE/Female_Only/DEG_Female_Heat_vs_Control_Significant.csv", row.names = FALSE)
+write.csv(sig_female_up,   "Results/DGE/Female_Only/DEG_Female_Upregulated.csv",                 row.names = FALSE)
+write.csv(sig_female_down, "Results/DGE/Female_Only/DEG_Female_Downregulated.csv",               row.names = FALSE)
+
+### DGE with limma-voom ###
+
+library(limma)
+
+dge_AB_Female_voom <- DGEList(
+  counts  = Counts_AB_Female,
+  samples = AHDB1_AB_Female
+)
+
+# Sanity Check
+table(dge_AB_Female_voom$samples$Treatment)
+cat("Female-Only Subset\n")
+cat("Total genes (before filtering):", nrow(dge_AB_Female_voom), "\n\n")
+
+dge_AB_Female_voom$samples$Treatment <- droplevels(factor(dge_AB_Female_voom$samples$Treatment))
+
+design_female_voom <- model.matrix(~ 0 + Treatment, data = dge_AB_Female_voom$samples)
+colnames(design_female_voom) <- levels(dge_AB_Female_voom$samples$Treatment)
+
+keep_female_voom <- filterByExpr(dge_AB_Female_voom, design_female_voom)
+dge_AB_Female_voom <- dge_AB_Female_voom[keep_female_voom, , keep.lib.sizes = FALSE]
+
+cat("Genes after filtering:", nrow(dge_AB_Female_voom), "\n\n")
+
+dge_AB_Female_voom <- calcNormFactors(dge_AB_Female_voom, method = "TMM")
+
+v_female <- voom(dge_AB_Female_voom, design_female_voom, plot = TRUE)
+
+fit_female_voom <- lmFit(v_female, design_female_voom)
+
+contrast_female_voom <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_female_voom
+)
+cat("Contrast:\n")
+print(contrast_female_voom)
+
+fit_female_voom <- contrasts.fit(fit_female_voom, contrast_female_voom)
+fit_female_voom <- eBayes(fit_female_voom, trend = TRUE)
+
+DEG_female_voom <- topTable(fit_female_voom, coef = "Heat_vs_Control", n = Inf, sort.by = "P")
+DEG_female_voom$Gene_ID <- rownames(DEG_female_voom)
+
+sig_female_voom      <- DEG_female_voom[DEG_female_voom$adj.P.Val < 0.05, ]
+sig_female_voom_up   <- sig_female_voom[sig_female_voom$logFC > 0, ]
+sig_female_voom_down <- sig_female_voom[sig_female_voom$logFC < 0, ]
+
+cat("Female-Only DEG Results (limma-voom)\n")
+cat("Total significant DEGs:", nrow(sig_female_voom), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_voom_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_voom_down), "\n\n")
+
+write.csv(DEG_female_voom,      "Results/DGE/Female_Only/Voom_DEG_Female_Heat_vs_Control_All.csv",         row.names = FALSE)
+write.csv(sig_female_voom,      "Results/DGE/Female_Only/Voom_DEG_Female_Heat_vs_Control_Significant.csv", row.names = FALSE)
+write.csv(sig_female_voom_up,   "Results/DGE/Female_Only/Voom_DEG_Female_Upregulated.csv",                 row.names = FALSE)
+write.csv(sig_female_voom_down, "Results/DGE/Female_Only/Voom_DEG_Female_Downregulated.csv",               row.names = FALSE)
+
+# Plot mean variance trend
+v_female <- voom(dge_AB_Female_voom, design_female_voom, plot = TRUE)
+
+### DGE with DESeq2 ###
+
+library(DESeq2)
+
+AHDB1_AB_Female_deseq <- subset(AHDB1_AB, Sex == "F")
+Counts_AB_Female_deseq <- Raw_Counts[, rownames(AHDB1_AB_Female_deseq)]
+
+Counts_AB_Female_int <- round(Counts_AB_Female_deseq)
+
+# Build colData and set reference level
+col_data_female <- AHDB1_AB_Female_deseq
+col_data_female$Treatment <- droplevels(factor(col_data_female$Treatment))
+col_data_female$Treatment <- relevel(col_data_female$Treatment, ref = "Control")
+
+cat("Female-Only Subset\n")
+cat("Total genes (before filtering):", nrow(Counts_AB_Female_int), "\n\n")
+
+# Build DESeq2 object
+dds_female <- DESeqDataSetFromMatrix(
+  countData = Counts_AB_Female_int,
+  colData   = col_data_female,
+  design    = ~ Treatment
+)
+
+keep_female_deseq <- rowSums(counts(dds_female)) >= 10
+dds_female <- dds_female[keep_female_deseq, ]
+cat("Genes after filtering:", nrow(dds_female), "\n\n")
+
+dds_female <- DESeq(dds_female)
+
+res_female <- results(
+  dds_female,
+  contrast = c("Treatment", "Heat", "Control"),
+  alpha    = 0.05
+)
+
+summary(res_female)
+
+DEG_female_deseq <- as.data.frame(res_female)
+DEG_female_deseq$Gene_ID <- rownames(DEG_female_deseq)
+
+# Remove NA's
+DEG_female_deseq <- DEG_female_deseq[
+  !is.na(DEG_female_deseq$padj) & !is.na(DEG_female_deseq$log2FoldChange),
+]
+cat("Genes after NA removal:", nrow(DEG_female_deseq), "\n\n")
+
+# Subset DEG's into upregulated and downregulated
+sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.05, ]
+sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 0, ]
+sig_female_deseq_down <- sig_female_deseq[sig_female_deseq$log2FoldChange < 0, ]
+
+cat("Female-Only DEG Results (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_female_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_deseq_down), "\n\n")
+
+write.csv(DEG_female_deseq,      "Results/DGE/Female_Only/DESeq2_DEG_Female_Heat_vs_Control_All.csv",         row.names = FALSE)
+write.csv(sig_female_deseq,      "Results/DGE/Female_Only/DESeq2_DEG_Female_Heat_vs_Control_Significant.csv", row.names = FALSE)
+write.csv(sig_female_deseq_up,   "Results/DGE/Female_Only/DESeq2_DEG_Female_Upregulated.csv",                 row.names = FALSE)
+write.csv(sig_female_deseq_down, "Results/DGE/Female_Only/DESeq2_DEG_Female_Downregulated.csv",               row.names = FALSE)
+
+# Volcano Plots for all three methods
+
+library(patchwork)
+library(ggVennDiagram)
+
+p_edger_f <- make_volcano(DEG_female,             "edgeR")
+p_voom_f  <- make_volcano_voom(DEG_female_voom,   "limma-voom")
+p_deseq_f <- make_volcano_deseq(DEG_female_deseq, "DESeq2")
+
+combined_volcano_female <- (p_edger_f | p_voom_f | p_deseq_f) +
+  plot_annotation(
+    title    = "Heat vs Control — Females Only",
+    subtitle = "edgeR  |  limma-voom  |  DESeq2",
+    theme    = theme(
+      plot.title    = element_text(face = "bold", size = 15, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40")
+    )
+  ) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+print(combined_volcano_female)
+
+ggsave("Results/DGE/Female_Only/Volcano_Female_All_Methods.png",
+       combined_volcano_female, width = 18, height = 6, dpi = 300)
+
+venn_list_f <- list(
+  edgeR        = rownames(sig_female),
+  `limma-voom` = rownames(sig_female_voom),
+  DESeq2       = sig_female_deseq$Gene_ID
+)
+
+venn_up_f <- list(
+  edgeR        = rownames(sig_female_up),
+  `limma-voom` = rownames(sig_female_voom_up),
+  DESeq2       = sig_female_deseq_up$Gene_ID
+)
+
+venn_down_f <- list(
+  edgeR        = rownames(sig_female_down),
+  `limma-voom` = rownames(sig_female_voom_down),
+  DESeq2       = sig_female_deseq_down$Gene_ID
+)
+
+# All DEGs
+p_venn_f <- ggVennDiagram(venn_list_f, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#2171B5") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "All DEGs") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+# Upregulated
+p_venn_up_f <- ggVennDiagram(venn_up_f, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#FFF5F0", high = "#CB181D") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "Upregulated in Heat") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+# Downregulated
+p_venn_down_f <- ggVennDiagram(venn_down_f, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#2171B5") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "Downregulated in Heat") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+# Combined Venn
+combined_venn_female <- (p_venn_f / (p_venn_up_f | p_venn_down_f)) +
+  plot_annotation(
+    title = "DEG Overlap Across Methods — Females (Heat vs Control)",
+    theme = theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5))
+  )
+
+print(combined_venn_female)
+
+ggsave("Results/DGE/Female_Only/Venn_Female_Combined.png",
+       combined_venn_female, width = 12, height = 12, dpi = 300)
+
+consensus_all_f  <- Reduce(intersect, venn_list_f)
+consensus_up_f   <- Reduce(intersect, venn_up_f)
+consensus_down_f <- Reduce(intersect, venn_down_f)
+
+cat("Genes significant in all 3 methods:", length(consensus_all_f), "\n")
+cat("Upregulated in all 3 methods:", length(consensus_up_f), "\n")
+cat("Downregulated in all 3 methods:", length(consensus_down_f), "\n")
+
+write.csv(data.frame(Gene_ID = consensus_all_f),
+          "Results/DGE/Female_Only/Consensus_DEGs_All_Methods.csv",   row.names = FALSE)
+write.csv(data.frame(Gene_ID = consensus_up_f),
+          "Results/DGE/Female_Only/Consensus_DEGs_Upregulated.csv",   row.names = FALSE)
+write.csv(data.frame(Gene_ID = consensus_down_f),
+          "Results/DGE/Female_Only/Consensus_DEGs_Downregulated.csv", row.names = FALSE)
+
+# Compare top 100 DEG's across three methods
+
+# edgeR — ranked by FDR
+top100_edger_f <- DEG_female[order(DEG_female$FDR), ][1:100, ]
+genes_top100_edger_f <- rownames(top100_edger_f)
+
+# limma-voom — ranked by adj.P.Val
+top100_voom_f <- DEG_female_voom[order(DEG_female_voom$adj.P.Val), ][1:100, ]
+genes_top100_voom_f <- rownames(top100_voom_f)
+
+# DESeq2 — ranked by padj
+top100_deseq_f <- DEG_female_deseq[order(DEG_female_deseq$padj), ][1:100, ]
+genes_top100_deseq_f <- top100_deseq_f$Gene_ID
+
+overlap_er_voom_f    <- intersect(genes_top100_edger_f, genes_top100_voom_f)
+overlap_er_deseq_f   <- intersect(genes_top100_edger_f, genes_top100_deseq_f)
+overlap_voom_deseq_f <- intersect(genes_top100_voom_f,  genes_top100_deseq_f)
+overlap_all_f        <- Reduce(intersect, list(genes_top100_edger_f, genes_top100_voom_f, genes_top100_deseq_f))
+
+cat("edgeR ∩ limma-voom:          ", length(overlap_er_voom_f), "\n")
+cat("edgeR ∩ DESeq2:              ", length(overlap_er_deseq_f), "\n")
+cat("limma-voom ∩ DESeq2:         ", length(overlap_voom_deseq_f), "\n")
+cat("All three methods:           ", length(overlap_all_f), "\n")
+
+cat("Genes in all 3 top 100 lists:\n")
+print(overlap_all_f)
+
+venn_top100_f <- list(
+  edgeR        = genes_top100_edger_f,
+  `limma-voom` = genes_top100_voom_f,
+  DESeq2       = genes_top100_deseq_f
+)
+
+p_venn_top100_f <- ggVennDiagram(venn_top100_f, label_alpha = 0, label = "count") +
+  scale_fill_gradient(low = "#F7FBFF", high = "#2171B5") +
+  scale_color_manual(values = c("black", "black", "black")) +
+  labs(title = "Top 100 DEG Overlap Across Methods — Females (Heat vs Control)") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 13))
+
+print(p_venn_top100_f)
+
+ggsave("Results/DGE/Female_Only/Venn_Top100_Female_All_Methods.png",
+       p_venn_top100_f, width = 7, height = 6, dpi = 300)
+
+# Build a summary table showing rank of each consensus gene in each method
+rank_edger_f <- data.frame(
+  Gene_ID    = rownames(DEG_female[order(DEG_female$FDR), ]),
+  Rank_edgeR = seq_len(nrow(DEG_female))
+)
+
+rank_voom_f <- data.frame(
+  Gene_ID   = rownames(DEG_female_voom[order(DEG_female_voom$adj.P.Val), ]),
+  Rank_voom = seq_len(nrow(DEG_female_voom))
+)
+
+rank_deseq_f <- data.frame(
+  Gene_ID     = DEG_female_deseq$Gene_ID[order(DEG_female_deseq$padj)],
+  Rank_DESeq2 = seq_len(nrow(DEG_female_deseq))
+)
+
+# Merge on consensus top 100 genes
+rank_table_f <- data.frame(Gene_ID = overlap_all_f) %>%
+  merge(rank_edger_f,  by = "Gene_ID") %>%
+  merge(rank_voom_f,   by = "Gene_ID") %>%
+  merge(rank_deseq_f,  by = "Gene_ID") %>%
+  arrange(Rank_edgeR)
+
+cat("\nRank comparison for genes in all 3 top 100 lists:\n")
+print(rank_table_f)
+
+write.csv(rank_table_f,
+          "Results/DGE/Female_Only/Top100_Consensus_RankComparison.csv",
+          row.names = FALSE)
+
+```
+
+# (1) Ignore:  Normalize Count Data for A vs B, (2) Run DGE with EdgeR, Limma, & DESeq2 on Male & Females Combined
+
+```{r}
+
+dge_AB <- calcNormFactors(dge_AB, method = "TMM")
+cat("Normalization factors:\n")
+print(dge_AB$samples$norm.factors)
+
+# Calculate log-CPM for normalized data
+lcpm_AB_norm <- cpm(dge_AB, log=TRUE, prior.count = 1)
+dim(lcpm_AB_norm)
+
+# Export normalized counts
+# write.csv(lcpm_AB_norm, file = "Results/NormalizedCounts/NormalisedCount_AB_CombinedSexes.csv")
+
+# Set factors
+dge_AB$samples$Sex <- factor(dge_AB$samples$Sex)
+dge_AB$samples$Treatment <- factor(dge_AB$samples$Treatment)
+
+# Combined group
+dge_AB$samples$group <- interaction(
+  dge_AB$samples$Treatment,
+  dge_AB$samples$Sex,
+  sep = "_"
+)
+
+# Sanity Check for group distributions
+cat("Group distribution:\n")
+print(table(dge_AB$samples$group))
+
+# Design matrix
+design <- model.matrix(~ 0 + group, data = dge_AB$samples)
+colnames(design) <- levels(dge_AB$samples$group)
+cat("Design matrix:\n")
+print(design)
+
+# Filter low-expressed genes
+keep <- filterByExpr(dge_AB, design)
+genes_after_filter <- sum(keep)
+
+cat("Genes before filtering:", nrow(dge_AB), "\n")
+cat("Genes after filtering:", genes_after_filter, "\n")
+cat("Genes removed:", nrow(dge_AB) - genes_after_filter, "\n")
+cat("Retention rate:", round(genes_after_filter / nrow(dge_AB) * 100, 2), "%\n\n")
+
+dge_AB <- dge_AB[keep, , keep.lib.sizes = FALSE]
+
+# Re-normalize after filtering
+dge_AB <- calcNormFactors(dge_AB)
+
+# Estimate dispersions and fit model
+dge_AB <- estimateDisp(dge_AB, design)
+fit <- glmQLFit(dge_AB, design)
+
+# Define contrasts
+my.contrasts <- makeContrasts(
+  # Heat effect (averaged over sex)
+  Heat_vs_Control =
+    (Heat_M + Heat_F) - (Control_M + Control_F),
+  
+  # Sex effect (averaged over treatment)
+  Sex_effect =
+    (Control_M + Heat_M) - (Control_F + Heat_F),
+  
+  # Sex-specific heat response
+  Interaction =
+    (Heat_M - Control_M) - (Heat_F - Control_F),
+  
+  levels = design
+)
+
+cat("Contrasts defined:\n")
+print(my.contrasts)
+
+# Run QLF-tests
+qlf_heat <- glmQLFTest(fit, contrast = my.contrasts[, "Heat_vs_Control"])
+qlf_sex  <- glmQLFTest(fit, contrast = my.contrasts[, "Sex_effect"])
+qlf_int  <- glmQLFTest(fit, contrast = my.contrasts[, "Interaction"])
+
+# Extract results
+DEG_heat <- topTags(qlf_heat, n = Inf)$table
+DEG_sex  <- topTags(qlf_sex,  n = Inf)$table
+DEG_int  <- topTags(qlf_int,  n = Inf)$table
+
+# Add Gene IDs
+DEG_heat$Gene_ID <- rownames(DEG_heat)
+DEG_sex$Gene_ID  <- rownames(DEG_sex)
+DEG_int$Gene_ID  <- rownames(DEG_int)
+
+# Identify significant genes (FDR < 0.05)
+sig_heat <- DEG_heat[DEG_heat$FDR < 0.05, ]
+sig_sex  <- DEG_sex[DEG_sex$FDR < 0.05, ]
+sig_int  <- DEG_int[DEG_int$FDR < 0.05, ]
+
+# Further categorize by direction
+sig_heat_up <- sig_heat[sig_heat$logFC > 0, ]
+sig_heat_down <- sig_heat[sig_heat$logFC < 0, ]
+
+sig_sex_male <- sig_sex[sig_sex$logFC > 0, ]  # Higher in males
+sig_sex_female <- sig_sex[sig_sex$logFC < 0, ]  # Higher in females
+
+sig_int_male <- sig_int[sig_int$logFC > 0, ]  # Stronger heat response in males
+sig_int_female <- sig_int[sig_int$logFC < 0, ]  # Stronger heat response in females
+
+cat("Heat vs Control:\n")
+cat("  Total significant DEGs (FDR < 0.05):", nrow(sig_heat), "\n")
+cat("  Upregulated in Heat:", nrow(sig_heat_up), "\n")
+cat("  Downregulated in Heat:", nrow(sig_heat_down), "\n\n")
+
+cat("Sex Effect (Male vs Female):\n")
+cat("  Total significant DEGs (FDR < 0.05):", nrow(sig_sex), "\n")
+cat("  Higher in Males:", nrow(sig_sex_male), "\n")
+cat("  Higher in Females:", nrow(sig_sex_female), "\n\n")
+
+cat("Treatment × Sex Interaction:\n")
+cat("  Total significant DEGs (FDR < 0.05):", nrow(sig_int), "\n")
+cat("  Stronger heat response in Males:", nrow(sig_int_male), "\n")
+cat("  Stronger heat response in Females:", nrow(sig_int_female), "\n\n")
+
+# Export results
+write.csv(DEG_heat, "Results/DGE/Male_Female_Combined/Heat_vs_Control_AllGenes.csv", row.names = FALSE)
+write.csv(sig_heat, "Results/DGE/Male_Female_Combined/DEG_Heat_vs_Control_Significant.csv", row.names = FALSE)
+
+write.csv(sig_heat_up, "Results/DGE/Male_Female_Combined/DEG_Heat_Upregulated.csv", row.names = FALSE)
+write.csv(sig_heat_down, "Results/DGE/Male_Female_Combined/DEG_Heat_Downregulated.csv", row.names = FALSE)
+
+write.csv(DEG_sex, "Results/DGE/Male_Female_Combined/Sex_Effect_AllGenes.csv", row.names = FALSE)
+write.csv(sig_sex, "Results/DGE/Male_Female_Combined/DEG_Sex_Effect_Significant.csv", row.names = FALSE)
+
+write.csv(sig_sex_male, "Results/DGE/Male_Female_Combined/DEG_Sex_Male_Higher.csv", row.names = FALSE)
+write.csv(sig_sex_female, "Results/DGE/Male_Female_Combined/DEG_Sex_Female_Higher.csv", row.names = FALSE)
+
+write.csv(DEG_int, "Results/DGE/Male_Female_Combined/Interaction_AllGenes.csv", row.names = FALSE)
+write.csv(sig_int, "Results/DGE/Male_Female_Combined/DEG_Interaction_Significant.csv", row.names = FALSE)
+
+```
+
+
