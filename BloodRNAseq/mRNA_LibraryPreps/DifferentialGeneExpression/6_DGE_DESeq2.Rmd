@@ -1,0 +1,470 @@
+---
+title: "6_DGE_DESeq2"
+author: "Brynleigh Payne"
+date: "2026-06-16"
+output: html_document
+---
+
+####  DESeq2 Script for Differential Gene Expression Analysis in Functional Genomics BIOL: 6850
+### Resources and Citations:
+# Love et al 2016 DESeq2 GenomeBiology
+# https://bioconductor.riken.jp/packages/2.14/bioc/vignettes/DESeq2/inst/doc/DESeq2.pdf
+# http://master.bioconductor.org/packages/release/workflows/vignettes/rnaseqGene/inst/doc/rnaseqGene.html
+
+#### Install the DESeq2 package if you have not already
+
+```{r}
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+install.packages("BiocManager")
+#BiocManager::install("DESeq2")
+library(DESeq2)
+```
+
+#### Input the count data, the gene(/transcript) count matrix and labels
+
+```{r}
+countdata <- as.matrix(read.csv("gene_count_matrix (3).csv", row.names="gene_id"))
+dim(countdata)
+head(countdata)
+```
+
+#### Input the meta data or phenotype data
+# Note: The PHENO_DATA file contains information on each sample, e.g., sex or population. The exact way to import this depends on the format of the file.
+##  Make sure the individual names match between the count data and the PHENO_DATA
+
+```{r}
+coldata <-(read.table("PHENO_DATA_Blood_Control_Heat.txt", header=TRUE, row.names=1, sep = "\t"))
+dim(coldata)
+head(coldata)
+
+```
+
+## Remove Baseline samples
+
+```{r}
+coldata_filtered <- coldata[!grepl("^Baseline", coldata$treatment), ]
+head(coldata_filtered)
+```
+
+## Subset the countdata to only include Control (A) and Heat (B) samples 
+
+```{r}
+samples_to_keep <- rownames(coldata_filtered)
+
+length(intersect(samples_to_keep, colnames(countdata)))
+
+all(samples_to_keep %in% colnames(countdata))
+
+setdiff(samples_to_keep, colnames(countdata))
+
+setdiff(colnames(countdata), samples_to_keep)
+
+common_samples <- intersect(samples_to_keep, colnames(countdata))
+
+countdata_subset <- countdata[, common_samples]
+coldata_subset <- coldata_filtered[common_samples, ]
+
+coldata_subset <- coldata_subset[colnames(countdata_subset), ]
+
+identical(rownames(coldata_subset), colnames(countdata_subset))
+```
+
+# Check all sample IDs in colData are also in CountData and match their orders
+
+```{r}
+all(rownames(coldata_subset) %in% colnames(countdata_subset))
+countdata_subset <- countdata_subset[, rownames(coldata_subset)]
+all(rownames(coldata_subset) == colnames(countdata_subset))
+```
+
+## Manually set reference levels for sex and treatment
+
+```{r}
+coldata_subset$sex <- relevel(factor(coldata_subset$sex), ref = "female")
+coldata_subset$treatment <- relevel(factor(coldata_subset$treatment), ref = "Control")
+```
+
+#### Create the DESEQ dataset and define the statistical model
+# Interaction Model
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = countdata_subset, colData=coldata_subset,  design = ~ sex + treatment + sex:treatment)
+dds
+```
+
+##   Prefiltering 
+# Here we perform a minimal pre-filtering to remove rows that have less than 20 reads mapped.
+# You can play around with this number to see how it affects your results!
+
+```{r}
+dds <- dds[ rowSums(counts(dds)) > 20, ]
+
+# How many genes were filtered out?
+dds
+```
+
+## Set factors for statistical analyses
+
+```{r}
+dds$sex <- factor(dds$sex, levels=c("female","male"))
+dds$treatment <- factor(dds$treatment, levels=c("Control","Heat"))
+```
+
+## Differential expression analysis of the Interaction Model
+
+```{r}
+dds <- DESeq(dds)
+res <- results(dds)
+res
+```
+
+# Order our results table by the smallest adjusted p value:
+
+```{r}
+resOrdered <- res[order(res$padj),]
+resOrdered
+```
+
+# We can summarize some basic tallies using the summary function the default is p<0.1.
+
+```{r}
+summary(res)
+```
+
+# How many adjusted p-values were less than 0.1?
+
+```{r}
+sum(res$padj < 0.1, na.rm=TRUE)
+```
+
+# If the adjusted p value will be a value other than 0.1, alpha should be set to that value:
+
+```{r}
+res05 <- results(dds, alpha=0.05)
+summary(res05)
+sum(res05$padj < 0.05, na.rm=TRUE)
+```
+
+# plotMA shows the log2 fold changes attributable to a given variable over the meanof normalized counts. 
+# Points will be colored red if the adjusted p value is less than 0.1. 
+# Points which fall out of the window are plotted as open triangles pointing either up or down
+  
+```{r}
+plotMA(res, main="DESeq2 Interaction Model", ylim=c(-8,8))
+```
+  
+#### Create the DESEQ dataset and define the statistical model
+# Female Model
+```{r}
+# Subset females from pheno data
+coldata_female_subset <- coldata_subset[coldata_subset$sex == "female", ]
+head(coldata_female_subset)
+
+# Subset counts to match
+keep_samples <- rownames(coldata_female_subset)
+
+countdata_female_subset <- countdata_subset[, keep_samples]
+
+# Sanity check
+coldata_female_subset <- coldata_female_subset[colnames(countdata_female_subset), ]
+
+identical(rownames(coldata_female_subset), colnames(countdata_female_subset))
+
+# Create dds2 for females
+dds2 <- DESeqDataSetFromMatrix(countData = countdata_female_subset, colData=coldata_female_subset,  design = ~ treatment)
+dds2
+```
+
+##   Prefiltering 
+# Here we perform a minimal pre-filtering to remove rows that have less than 20 reads mapped.
+# You can play around with this number to see how it affects your results!
+
+```{r}
+dds2 <- dds2[ rowSums(counts(dds2)) > 20, ]
+
+# How many genes were filtered out?
+dds2
+```
+
+## Set factors for statistical analyses
+
+```{r}
+dds2$treatment <- factor(dds2$treatment, levels=c("Control","Heat"))
+```
+
+## Differential expression analysis of the Female model
+
+```{r}
+dds2 <- DESeq(dds2)
+res2 <- results(dds2)
+res2
+```
+
+# Order our results table by the smallest adjusted p value:
+
+```{r}
+resOrdered2 <- res2[order(res2$padj),]
+resOrdered2
+```
+
+# We can summarize some basic tallies using the summary function the default is p<0.1.
+
+```{r}
+summary(res2)
+```
+
+# How many adjusted p-values were less than 0.1?
+
+```{r}
+sum(res2$padj < 0.1, na.rm=TRUE)
+```
+
+# plotMA shows the log2 fold changes attributable to a given variable over the meanof normalized counts. 
+# Points will be colored red if the adjusted p value is less than 0.1. 
+# Points which fall out of the window are plotted as open triangles pointing either up or down
+  
+```{r}
+plotMA(res2, main="DESeq2 Female Model", ylim=c(-8,8))
+```
+
+#### Create the DESEQ dataset and define the statistical model
+# Male Model
+```{r}
+# Subset males from pheno data
+coldata_male_subset <- coldata_subset[coldata_subset$sex == "male", ]
+head(coldata_male_subset)
+
+# Subset counts to match
+keep_samples <- rownames(coldata_male_subset)
+
+countdata_male_subset <- countdata_subset[, keep_samples]
+
+# Sanity check
+coldata_male_subset <- coldata_male_subset[colnames(countdata_male_subset), ]
+
+identical(rownames(coldata_male_subset), colnames(countdata_male_subset))
+
+# Create dd32 for males
+dds3 <- DESeqDataSetFromMatrix(countData = countdata_male_subset, colData=coldata_male_subset,  design = ~ treatment)
+dds3
+```
+
+##   Prefiltering 
+# Here we perform a minimal pre-filtering to remove rows that have less than 20 reads mapped.
+# You can play around with this number to see how it affects your results!
+
+```{r}
+dds3 <- dds3[ rowSums(counts(dds3)) > 20, ]
+
+# How many genes were filtered out?
+dds3
+```
+
+## Set factors for statistical analyses
+
+```{r}
+dds3$treatment <- factor(dds3$treatment, levels=c("Control","Heat"))
+```
+
+## Differential expression analysis of the Male model
+
+```{r}
+dds3 <- DESeq(dds3)
+res3 <- results(dds3)
+res3
+```
+
+# We can summarize some basic tallies using the summary function the default is p<0.1.
+
+```{r}
+summary(res3)
+```
+
+# How many adjusted p-values were less than 0.1?
+
+```{r}
+sum(res3$padj < 0.1, na.rm=TRUE)
+```
+
+# plotMA shows the log2 fold changes attributable to a given variable over the meanof normalized counts. 
+# Points will be colored red if the adjusted p value is less than 0.1. 
+# Points which fall out of the window are plotted as open triangles pointing either up or down
+  
+```{r}
+plotMA(res3, main="DESeq2 Male Model", ylim=c(-8,8))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+#After calling plotMA, one can use the function identify to interactively detect the row number of individual genes by clicking on the plot. 
+# One can then recover the gene identiers by saving the resulting indices:
+  idx <- identify(res$baseMean, res$log2FoldChange)
+# after selecting a gene. You need to press escape to move on
+  rownames(res)[idx]
+
+    
+##  1.5.2 Plot counts - sanity check!
+  
+# You can select the gene to plot by rowname or by numeric index.
+  plotCounts(dds, gene="FUN_025750", intgroup="treatment")
+# You can plot the gene with the lowest adjuated P-value
+  plotCounts(dds, gene=which.min(res$padj), intgroup="treatment")
+  dds
+  
+##  Write your results to a file 
+  write.csv(as.data.frame(resOrdered), file="DGESeq_results.csv")  
+  
+## 2.1.2 Extracting transformed values
+  rld <- rlog(dds)
+  vsd <- varianceStabilizingTransformation(dds)
+  head(assay(rld), 3)
+  
+### Heatmap of the count matrix
+#library("genefilter")
+  topVarGenes <- head(order(rowVars(assay(vsd)), decreasing = TRUE), 50)
+  
+  library("pheatmap")
+  mat  <- assay(vsd)[ topVarGenes, ]
+  mat  <- mat - rowMeans(mat)
+  anno <- as.data.frame(colData(vsd)[, c("treatment", "type")])
+  df <- as.data.frame(colData(dds)[,c("treatment","type")])
+    pheatmap(mat, annotation_col = anno)
+  
+  
+## 2.2.1 Heatmap of the count matrix
+#  library("pheatmap")
+#  select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:50]
+#  nt <- normTransform(dds) # defaults to log2(x+1)
+#  log2.norm.counts <- assay(nt)[select,]
+#   df <- as.data.frame(colData(dds)[,c("treatment","type")])
+#  pheatmap(assay(vsd)[mat,], cluster_rows=TRUE, show_rownames=TRUE,
+#          cluster_cols=TRUE, annotation_col=df)
+  
+# pheatmap(log2.norm.counts, cluster_rows=FALSE, show_rownames=FALSE, cluster_cols=FALSE, annotation_col=df)
+#  pheatmap(assay(rld)[select,], cluster_rows=FALSE, show_rownames=FALSE,  cluster_cols=FALSE, annotation_col=df) 
+  
+  
+#2.2.2 Heatmap of the sample-to-sample distances
+  sampleDists <- dist(t(assay(rld)))
+  library("RColorBrewer")
+  sampleDistMatrix <- as.matrix(sampleDists)
+  rownames(sampleDistMatrix) <- paste(rld$treatment)
+  colnames(sampleDistMatrix) <- NULL
+  colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+  pheatmap(sampleDistMatrix,
+           clustering_distance_rows=sampleDists,
+           clustering_distance_cols=sampleDists,
+           col=colors)
+  
+  
+# 2.2.3 Principal component plot of the samples
+  plotPCA(rld, intgroup=c("treatment"))
+  
+
+
+############ Preparing Data for GSEA and Cytoscape.  #############
+
+### Merge 'gene names' with DGE results by Gene Model
+
+## Import Annotation file with results from Blast to databases
+Anno <- read.csv("Daphnia_pulex.annotations_Name.csv", stringsAsFactors = FALSE, na.strings=c(""))
+summary(Anno)
+dim(Anno)
+
+## Import the DGE results file make sure the gene model name is 'gene_id' to match annotation file
+DGEresults <- read.csv("DGESeq_results.csv", stringsAsFactors = FALSE)
+summary(DGEresults)
+dim(DGEresults)
+
+## Rename first column so it matches "gene_id" in annotation file
+names(DGEresults)[1]<- "gene_id" 
+
+#Merge anno with DGE results
+DGE_Anno <- merge(Anno,DGEresults,by="gene_id",all.y = FALSE)
+dim(DGE_Anno)
+summary(DGE_Anno)
+
+  
+
+############################# Make ranked list for GSEA ####################
+## example aa <- within(resOrdered, z <- x + y - 2)
+DGE_Anno_Rank <-  within(DGE_Anno, rank <- sign(log2FoldChange) * -log10(pvalue))
+DGE_Anno_Rank 
+
+#subset the results so only Gene Name and rank
+DGErank = subset(DGE_Anno_Rank, select = c(Name,rank) )
+DGErank
+
+#subset the results so only Gene Name and rank
+DGErank_withName <- na.omit(DGErank)
+DGErank_withName
+dim(DGErank_withName)
+
+
+
+### IF NEEDED....remove the "gene-" from row names
+## https://stackoverflow.com/questions/39897155/replace-and-remove-part-of-string-in-rownames/39897315  "URS000075AF9C-snoRNA_GTATGTGTGGACAGCACTGAGACTGAGTCT"    to   "snoRNA"
+## We can use gsub to match one of more characters that are not a - ([^-]+) from the start (^) of the string followed by 
+## a - or (|) one or more characters that are not an underscore ([^_]+) until the end of the string ($)  and replace it with blanks ("").
+## gsub("^[^-]+-|_[^_]+$", "", rownames(df))
+
+#gene <-gsub("^[^-]+-", "", rownames(DGErank))
+#DGErankIDs  <-cbind(gene,DGErank)
+#head(DGErankIDs)
+#summary(DGErankIDs)  
+
+#write.csv(as.data.frame(DGErankIDs), file="DGErankIDs.csv", row.names=FALSE)  
+write.table(as.data.frame(DGErank_withName), file="DGErankName.rnk", quote=FALSE, row.names=FALSE, sep = "\t")  
+
+####  We also need the normalized expression DATA
+nt <- normTransform(dds) # defaults to log2(x+1)
+head(assay(nt))
+# compare to original count data
+head(countdata)
+# make it a new dataframe
+NormTransExp<-assay(nt)
+summary(NormTransExp)
+head(NormTransExp)
+
+## Rename first column so it matches "gene_id" in annotation file
+gene_id <-gsub("^[^-]+-", "", rownames(NormTransExp))
+NormTransExpIDs  <-cbind(gene_id,NormTransExp)
+head(NormTransExpIDs)
+
+## Rename first column so it matches "gene_id" in annotation file
+#names(NormTransExp)[1]<- "gene_id"
+#head(NormTransExp)
+
+#Merge anno with DGE results
+NormTransExp_Anno <- merge(Anno,NormTransExpIDs,by="gene_id",all.y = FALSE)
+dim(NormTransExp_Anno)
+summary(NormTransExp_Anno)
+head(NormTransExp_Anno)
+
+#remove FunIDs
+#NormTransExp_Anno = NormTransExp_Anno[,-1]
+# Move the FunIDs to column 2
+
+## Swap column 1 and column 2
+cols <- colnames(NormTransExp_Anno)  # get all column names
+cols[c(1, 2)] <- cols[c(2, 1)]  # Swap column names
+NormTransExp_Anno <- NormTransExp_Anno[, cols]  # Reorder the dataframe based on the new column order
+head(NormTransExp_Anno)
+
+#subset the results so only Genes with Name
+NormTransExp_Anno_withName <- na.omit(NormTransExp_Anno)
+head(NormTransExp_Anno_withName)
+dim(NormTransExp_Anno_withName)
+
+#write.csv(as.data.frame(NormTransExpIDs), file="NormTransExpressionData.csv", row.names=FALSE)  
+write.table(as.data.frame(NormTransExp_Anno_withName), file="NormTransExp_Anno_Names.txt", quote=FALSE, row.names=FALSE, sep = "\t")  
