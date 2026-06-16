@@ -1,4 +1,4 @@
-	treatment	type
+sample	treatment	type
 ZF_4529_D_BL	Heat_2-HR_Repair	paired-end
 ZF_4530_D_BL	Heat_24-HR_Repair	paired-end
 ZF_4531_B_BL	Baseline (2 weeks prior to Heat)	paired-end
