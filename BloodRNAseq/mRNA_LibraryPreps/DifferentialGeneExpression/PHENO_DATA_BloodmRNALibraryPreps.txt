@@ -1,0 +1,101 @@
+	treatment	type
+ZF_4529_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4530_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4531_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4531_D_BL	Heat	paired-end
+ZF_4533_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4533_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4533_H_BL	Heat	paired-end
+ZF_4534_D_BL	Heat	paired-end
+ZF_4543_D_BL	Control	paired-end
+ZF_4548_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4548_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4548_H_BL	Heat	paired-end
+ZF_4552_D_BL	Control	paired-end
+ZF_4554_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4562_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4593_D_BL	Heat	paired-end
+ZF_4600_D_BL	Heat	paired-end
+ZF_4601_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4604_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4613_D_BL	Heat	paired-end
+ZF_4619_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4619_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4619_H_BL	Heat	paired-end
+ZF_4620_D_BL	Heat	paired-end
+ZF_4622_D_BL	Control	paired-end
+ZF_4625_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4625_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4625_H_BL	Heat	paired-end
+ZF_4703_D_BL	Heat	paired-end
+ZF_4704_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4705_D_BL	Control	paired-end
+ZF_4708_D_BL	Control	paired-end
+ZF_4712_D_BL	Heat	paired-end
+ZF_4715_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4717_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4718_D_BL	Control	paired-end
+ZF_4719_B_BL	Baseline (2 weeks prior to Heat_24-HR_Repair)	paired-end
+ZF_4720_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4720_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4723_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4725_D_BL	Heat	paired-end
+ZF_4729_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4737_B_BL	Baseline (2 weeks prior to Heat_2-HR_Repair)	paired-end
+ZF_4738_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4738_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4738_H_BL	Heat	paired-end
+ZF_4739_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4739_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4739_H_BL	Heat	paired-end
+ZF_4741_D_BL	Heat	paired-end
+ZF_4744_D_BL	Control	paired-end
+ZF_4745_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4745_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4745_H_BL	Heat	paired-end
+ZF_4748_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4749_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4752_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4753_D_BL	Control	paired-end
+ZF_4755_D_BL	Control	paired-end
+ZF_4756_D_BL	Control	paired-end
+ZF_4757_D_BL	Heat	paired-end
+ZF_4761_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4764_D_BL	Heat	paired-end
+ZF_4765_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4767_D_BL	Control	paired-end
+ZF_4768_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4770_D_BL	Control	paired-end
+ZF_4771_D_BL	Heat	paired-end
+ZF_4773_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4774_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4775_B_BL	Baseline (2 weeks prior to Heat_2-HR_Repair)	paired-end
+ZF_4779_D_BL	Control	paired-end
+ZF_4781_D_BL	Control	paired-end
+ZF_4782_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4783_D_BL	Heat	paired-end
+ZF_4784_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4784_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4784_H_BL	Heat	paired-end
+ZF_4785_B_BL	Baseline (2 weeks prior to Heat_2-WK_Repair)	paired-end
+ZF_4785_D_BL	Heat_2-WK_Repair	paired-end
+ZF_4785_H_BL	Heat	paired-end
+ZF_4788_D_BL	Heat	paired-end
+ZF_4792_D_BL	Heat	paired-end
+ZF_4793_D_BL	Control	paired-end
+ZF_4795_D_BL	Heat_24-HR_Repair	paired-end
+ZF_4796_D_BL	Control	paired-end
+ZF_4797_D_BL	Heat	paired-end
+ZF_4798_B_BL	Baseline (2 weeks prior to Heat_24-HR_Repair)	paired-end
+ZF_4800_D_BL	Heat	paired-end
+ZF_4801_D_BL	Control	paired-end
+ZF_4802_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4805_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4806_D_BL	Control	paired-end
+ZF_4808_D_BL	Control	paired-end
+ZF_4809_D_BL	Heat	paired-end
+ZF_4810_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4812_D_BL	Control	paired-end
+ZF_4814_D_BL	Heat_2-HR_Repair	paired-end
+ZF_4817_B_BL	Baseline (2 weeks prior to Heat)	paired-end
+ZF_4817_D_BL	Heat	paired-end
