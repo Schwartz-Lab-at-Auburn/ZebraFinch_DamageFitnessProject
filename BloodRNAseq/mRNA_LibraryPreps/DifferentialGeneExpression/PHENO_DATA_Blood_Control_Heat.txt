@@ -1,4 +1,4 @@
-	treatment	sex	type
+sample	treatment	sex	type
 ZF_4531_B_BL	Baseline (2 weeks prior to Heat)	female	paired-end
 ZF_4531_D_BL	Heat	female	paired-end
 ZF_4533_H_BL	Heat	female	paired-end
