@@ -88,7 +88,7 @@ coldata_subset$treatment <- relevel(factor(coldata_subset$treatment), ref = "Con
 # Interaction Model
 
 ```{r}
-dds <- DESeqDataSetFromMatrix(countData = countdata_subset, colData=coldata_subset,  design = ~ sex + treatment + sex:treatment)
+dds <- DESeqDataSetFromMatrix(countData = countdata_subset, colData=coldata_subset,  design = ~ 0 + sex + treatment + sex:treatment)
 dds
 ```
 
@@ -171,7 +171,7 @@ coldata_female_subset <- coldata_female_subset[colnames(countdata_female_subset)
 identical(rownames(coldata_female_subset), colnames(countdata_female_subset))
 
 # Create dds2 for females
-dds2 <- DESeqDataSetFromMatrix(countData = countdata_female_subset, colData=coldata_female_subset,  design = ~ treatment)
+dds2 <- DESeqDataSetFromMatrix(countData = countdata_female_subset, colData=coldata_female_subset,  design = ~ 0 + treatment)
 dds2
 ```
 
@@ -219,6 +219,12 @@ summary(res2)
 sum(res2$padj < 0.1, na.rm=TRUE)
 ```
 
+# How many adjusted p-values were less than 0.05?
+
+```{r}
+sum(res2$padj < 0.05, na.rm=TRUE)
+```
+
 # plotMA shows the log2 fold changes attributable to a given variable over the meanof normalized counts. 
 # Points will be colored red if the adjusted p value is less than 0.1. 
 # Points which fall out of the window are plotted as open triangles pointing either up or down
@@ -245,7 +251,7 @@ coldata_male_subset <- coldata_male_subset[colnames(countdata_male_subset), ]
 identical(rownames(coldata_male_subset), colnames(countdata_male_subset))
 
 # Create dd32 for males
-dds3 <- DESeqDataSetFromMatrix(countData = countdata_male_subset, colData=coldata_male_subset,  design = ~ treatment)
+dds3 <- DESeqDataSetFromMatrix(countData = countdata_male_subset, colData=coldata_male_subset,  design = ~ 0 + treatment)
 dds3
 ```
 
@@ -284,6 +290,12 @@ summary(res3)
 
 ```{r}
 sum(res3$padj < 0.1, na.rm=TRUE)
+```
+
+# How many adjusted p-values were less than 0.1?
+
+```{r}
+sum(res3$padj < 0.05, na.rm=TRUE)
 ```
 
 # plotMA shows the log2 fold changes attributable to a given variable over the meanof normalized counts. 
