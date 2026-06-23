@@ -7,10 +7,7 @@ output: html_document
 #rmarkdown::render("DGanalyses.R")
 #rmarkdown::render("DGanalyses.R", "pdf_document")
 
-# Final Code for Male Sceloporus Multi Stress Experiment **Correct data not inverse data**
-# Created by Dasia Simpson in the T. Schwartz Lab
-
-# literature used to help create this code 
+# Created by Dasia Simpson in the T. Schwartz Lab for Male Sceloporus Multi Stress Experiment
 
 # Literature mostly R code is from 
 # Law et al. (2018). RNA-seq analysis is easy as 1-2-3 with limma, Glimma and edgeR. F1000Research, 5, 1408. https://doi.org/10.12688/f1000research.9005.3
@@ -214,8 +211,8 @@ table(rowSums(x$counts==0)==49)
 #The cut-off is cpm is >1 expressed across 3 conditions were kept
 # 12489 genes were passed this filter
 ```{r}
-keep.exprs <- rowSums(cpm>1)>=3
-x <- x[keep.exprs, keep.lib.sizes=FALSE]
+keep.exprs <- rowSums(cpm > 1) >= 3
+x <- x[keep.exprs, keep.lib.sizes = FALSE]
 x
 ```
 
@@ -354,6 +351,32 @@ female_design <- model.matrix(
 colnames(female_design) <- c("Control", "Heat")
 
 female_design
+
+# Male Model
+# Subset males from pheno data
+coldata_male_subset <- coldata_subset[coldata_subset$sex == "male", ]
+head(coldata_male_subset)
+
+# Subset counts to match
+keep_samples <- rownames(coldata_male_subset)
+
+countdata_male_subset <- countdata_subset[, keep_samples]
+
+# Sanity check
+coldata_male_subset <- coldata_male_subset[colnames(countdata_male_subset), ]
+
+identical(rownames(coldata_male_subset), colnames(countdata_male_subset))
+
+# Create design for males
+x.male <- x[, rownames(coldata_male_subset)]
+male_design <- model.matrix(
+    ~0 + treatment,
+    data = coldata_male_subset
+)
+
+colnames(male_design) <- c("Control", "Heat")
+
+male_design
 ```
 
 ##############
@@ -378,6 +401,11 @@ contr.matrix <- makeContrasts(
     Heat_vs_Control = Heat - Control,
     levels = female_design
 )
+
+contr.matrix2 <- makeContrasts(
+    Heat_vs_Control = Heat - Control,
+    levels = male_design
+)
 ```
 
 ############Removing heteroscedascity from count data
@@ -386,6 +414,9 @@ contr.matrix <- makeContrasts(
 ```{r}
 v.female <- voom(x.female, female_design, plot=TRUE)
 v.female
+
+v.male <- voom(x.male, male_design, plot=TRUE)
+v.male
 ```
 
 
@@ -400,6 +431,11 @@ vfit.female <- lmFit(v.female, female_design)
 vfit.female <- contrasts.fit(vfit.female, contrasts=contr.matrix)
 efit.female <- eBayes(vfit.female)
 plotSA(efit.female)
+
+vfit.male <- lmFit(v.male, male_design)
+vfit.male <- contrasts.fit(vfit.male, contrasts=contr.matrix2)
+efit.male <- eBayes(vfit.male)
+plotSA(efit.male)
 ```
 
 
@@ -408,6 +444,9 @@ plotSA(efit.female)
 ```{r}
 et.female <-(decideTests(efit.female))
 summary(et.female)
+
+et.male <-(decideTests(efit.male))
+summary(et.male)
 ```
 
 
@@ -417,6 +456,10 @@ summary(et.female)
 tfit.female <- treat(vfit.female, lfc=1)
 dt.female <- decideTests(tfit.female)
 summary(dt.female)
+
+tfit.male <- treat(vfit.male, lfc=1)
+dt.male <- decideTests(tfit.male)
+summary(dt.male)
 ```
 
 ####  Genes that are in common among the contrasts - use the columns in the contrast matrix
@@ -446,15 +489,20 @@ write.fit(efit, et, file="results.txt")
 # heat and control 
 #1 would be control vs heat
 ```{r}
-female_TopDEgenes <- topTreat(efit.female, coef=1, n=Inf)
+female_TopDEgenes <- topTable(efit.female, coef = "Heat_vs_Control", n = Inf, sort.by = "P")
 summary(female_TopDEgenes)
 head(female_TopDEgenes)
+
+male_TopDEgenes <- topTable(efit.male, coef = "Heat_vs_Control", n = Inf, sort.by = "P")
+summary(male_TopDEgenes)
+head(male_TopDEgenes)
 ```
 
 ## creates a .csv file 
 ```{r}
 write.csv(female_TopDEgenes,file = "Female_EdgeRxLimmaVoom_TopDE_genes_Heat_vs_Control.csv" )
 
+write.csv(male_TopDEgenes,file = "Male_EdgeRxLimmaVoom_TopDE_genes_Heat_vs_Control.csv" )
 ```
 
 #fireant and control
