@@ -469,8 +469,8 @@ DEG_male <- topTags(qlf_male, n = Inf)$table
 DEG_male$Gene_ID <- rownames(DEG_male)
 
 sig_male_EdgeR <- DEG_male[DEG_male$FDR < 0.1, ]
-sig_male_up_EdgeR <- sig_male[sig_male_EdgeR$logFC > 0, ]
-sig_male_down_EdgeR <- sig_male[sig_male_EdgeR$logFC < 0, ]
+sig_male_up_EdgeR <- sig_male_EdgeR[sig_male_EdgeR$logFC > 0, ]
+sig_male_down_EdgeR <- sig_male_EdgeR[sig_male_EdgeR$logFC < 0, ]
 
 cat("Male-Only DEG Results 0.1 - EdgeR")
 cat("Total significant DEGs:", nrow(sig_male_EdgeR), "\n")
@@ -479,8 +479,8 @@ cat("Downregulated in Heat:", nrow(sig_male_down_EdgeR), "\n\n")
 
 
 stringent_sig_male_EdgeR <- DEG_male[DEG_male$FDR < 0.05, ]
-stringent_sig_male_up_EdgeR <- stringent_sig_male[stringent_sig_male_EdgeR$logFC > 0, ]
-stringent_sig_male_down_EdgeR <- stringent_sig_male[stringent_sig_male_EdgeR$logFC < 0, ]
+stringent_sig_male_up_EdgeR <- stringent_sig_male_EdgeR[stringent_sig_male_EdgeR$logFC > 0, ]
+stringent_sig_male_down_EdgeR <- stringent_sig_male_EdgeR[stringent_sig_male_EdgeR$logFC < 0, ]
 
 cat("Male-Only DEG Results 0.05 - EdgeR")
 cat("Total significant DEGs:", nrow(stringent_sig_male_EdgeR), "\n")
@@ -528,8 +528,8 @@ DEG_female <- topTags(qlf_female, n = Inf)$table
 DEG_female$Gene_ID <- rownames(DEG_female)
 
 sig_female_EdgeR      <- DEG_female[DEG_female$FDR < 0.1, ]
-sig_female_up_EdgeR   <- sig_female[sig_female_EdgeR$logFC > 0, ]
-sig_female_down_EdgeR <- sig_female[sig_female_EdgeR$logFC < 0, ]
+sig_female_up_EdgeR   <- sig_female_EdgeR[sig_female_EdgeR$logFC > 0, ]
+sig_female_down_EdgeR <- sig_female_EdgeR[sig_female_EdgeR$logFC < 0, ]
 
 cat("Female-Only DEG Results 0.1 - EdgeR")
 cat("Total significant DEGs:", nrow(sig_female_EdgeR), "\n")
@@ -554,13 +554,13 @@ cat("Downregulated in Heat:", nrow(stringent_sig_female_down_EdgeR), "\n\n")
 library(UpSetR)
 
 # Make characters - Run once & then not again
-#sig_male_voom_up <- as.character(sig_male_voom_up$Gene_ID)
-#sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
-#sig_male_up_EdgeR <- as.character(sig_male_up_EdgeR$Gene_ID)
+sig_male_voom_up <- as.character(sig_male_voom_up$Gene_ID)
+sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
+sig_male_up_EdgeR <- as.character(sig_male_up_EdgeR$Gene_ID)
 
-#sig_male_voom_down <- as.character(sig_male_voom_down$Gene_ID)
-#sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
-#sig_male_down_EdgeR <- as.character(sig_male_down_EdgeR$Gene_ID)
+sig_male_voom_down <- as.character(sig_male_voom_down$Gene_ID)
+sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
+sig_male_down_EdgeR <- as.character(sig_male_down_EdgeR$Gene_ID)
 
 # Build lists
 up_list <- list(
@@ -600,6 +600,7 @@ upset(
 
 dev.off()
 ```
+
 # Upset Plot for all three methods - Females only
 
 ```{r}
@@ -607,13 +608,13 @@ dev.off()
 library(UpSetR)
 
 # Make characters - Run once & then not again
-#sig_female_voom_up <- as.character(sig_female_voom_up$Gene_ID)
-#sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
-#sig_female_up_EdgeR <- as.character(sig_female_up_EdgeR$Gene_ID)
+sig_female_voom_up <- as.character(sig_female_voom_up$Gene_ID)
+sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
+sig_female_up_EdgeR <- as.character(sig_female_up_EdgeR$Gene_ID)
 
-#sig_female_voom_down <- as.character(sig_female_voom_down$Gene_ID)
-#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
-#sig_female_down_EdgeR <- as.character(sig_female_down_EdgeR$Gene_ID)
+sig_female_voom_down <- as.character(sig_female_voom_down$Gene_ID)
+sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+sig_female_down_EdgeR <- as.character(sig_female_down_EdgeR$Gene_ID)
 
 # Build lists
 female_up_list <- list(
@@ -658,3 +659,53 @@ upset(
 dev.off()
 ```
 
+# Upset Plot for DESeq2 - Sex intersections in heat
+
+```{r}
+# Install & Load packages
+library(UpSetR)
+
+# Make characters - Run once & then not again
+#sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
+#sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
+
+#sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
+#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+
+# Build lists
+up_list <- list(
+  Male_upregulated_in_heat    = sig_male_deseq_up,
+  Female_upregulated_in_heat  = sig_female_deseq_up
+)
+
+down_list <- list(
+  Male_downregulated_in_heat    = sig_male_deseq_down,
+  Female_downregulated_in_heat    = sig_female_deseq_down
+)
+
+# Plot upregulated
+png("DESeq2_Sex_up_UpSet.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(up_list),
+  mainbar.y.label = "Upregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+
+# Plot downregulated
+png("DESeq2_Sex_down_UpSet.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(down_list),
+  mainbar.y.label = "Downregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+```
