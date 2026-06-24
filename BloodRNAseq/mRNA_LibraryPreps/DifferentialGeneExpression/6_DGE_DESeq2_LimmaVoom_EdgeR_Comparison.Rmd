@@ -2,11 +2,11 @@
 title: "6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison"
 author: "Ali Amer, modified by Brynleigh Payne"
 date: "2026-06-22"
-output: html_document
+output: md_document
 ---
 
 # Script Goal: 
-# 1. Convert raw count reads of samples sent for liver RNA-Seq (A vs B) from prep.dy script   
+# 1. Convert raw count reads of samples sent for Blood RNA-Seq (A vs B) from prep.dy script   
 # 2. Check library sizes across A vs B & Normalize raw count data
 # 3. Run DGE with edgeR, limma and DESeq2 (Males Only & Females Only)
 # 4. Run Pathway Enrichment & WGCNA
@@ -423,11 +423,238 @@ cat("Downregulated in Heat:", nrow(stringent_sig_female_deseq_down), "\n\n")
 
 ```
 
-# Volcano Plots for all three methods
+### DGE with Edge R ###
 
 ```{r}
-library(patchwork)
-library(ggVennDiagram)
+library(edgeR)
 
+# Males only
+dim(AHDB1_AB_Male)
+
+dge_AB_Male <- DGEList(
+  counts  = Counts_AB_Male,
+  samples = AHDB1_AB_Male
+)
+
+# Set factor and build design matrix
+dge_AB_Male$samples$treatment <- droplevels(factor(dge_AB_Male$samples$treatment))
+
+design_male <- model.matrix(~ 0 + treatment, data = dge_AB_Male$samples)
+colnames(design_male) <- levels(dge_AB_Male$samples$treatment)
+table(dge_AB_Male$samples$treatment)
+
+cat("Total genes (before filtering):", nrow(dge_AB_Male), "\n\n")
+
+# filter using the design matrix
+keep_male <- filterByExpr(dge_AB_Male, design_male)
+dge_AB_Male <- dge_AB_Male[keep_male, , keep.lib.sizes = FALSE]
+cat("Total genes (after filtering):", nrow(dge_AB_Male), "\n\n")
+
+# TMM normalization
+dge_AB_Male <- calcNormFactors(dge_AB_Male, method = "TMM")
+
+dge_AB_Male <- estimateDisp(dge_AB_Male, design_male)
+fit_male <- glmQLFit(dge_AB_Male, design_male)
+
+contrast_male <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_male
+)
+cat("Contrast")
+print(contrast_male)
+
+qlf_male <- glmQLFTest(fit_male, contrast = contrast_male)
+
+DEG_male <- topTags(qlf_male, n = Inf)$table
+DEG_male$Gene_ID <- rownames(DEG_male)
+
+sig_male_EdgeR <- DEG_male[DEG_male$FDR < 0.1, ]
+sig_male_up_EdgeR <- sig_male[sig_male_EdgeR$logFC > 0, ]
+sig_male_down_EdgeR <- sig_male[sig_male_EdgeR$logFC < 0, ]
+
+cat("Male-Only DEG Results 0.1 - EdgeR")
+cat("Total significant DEGs:", nrow(sig_male_EdgeR), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_up_EdgeR), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_down_EdgeR), "\n\n")
+
+
+stringent_sig_male_EdgeR <- DEG_male[DEG_male$FDR < 0.05, ]
+stringent_sig_male_up_EdgeR <- stringent_sig_male[stringent_sig_male_EdgeR$logFC > 0, ]
+stringent_sig_male_down_EdgeR <- stringent_sig_male[stringent_sig_male_EdgeR$logFC < 0, ]
+
+cat("Male-Only DEG Results 0.05 - EdgeR")
+cat("Total significant DEGs:", nrow(stringent_sig_male_EdgeR), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_male_up_EdgeR), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_male_down_EdgeR), "\n\n")
+
+#Females only
+dim(AHDB1_AB_Female)
+
+dge_AB_Female <- DGEList(
+  counts  = Counts_AB_Female,
+  samples = AHDB1_AB_Female
+)
+
+# Set factor and build design matrix
+dge_AB_Female$samples$treatment <- droplevels(factor(dge_AB_Female$samples$treatment))
+
+design_female <- model.matrix(~ 0 + treatment, data = dge_AB_Female$samples)
+colnames(design_female) <- levels(dge_AB_Female$samples$treatment)
+table(dge_AB_Female$samples$treatment)
+
+cat("Total genes (before filtering):", nrow(dge_AB_Female), "\n\n")
+
+# filter using the design matrix
+keep_female <- filterByExpr(dge_AB_Female, design_female)
+dge_AB_Female <- dge_AB_Female[keep_female, , keep.lib.sizes = FALSE]
+cat("Total genes (after filtering):", nrow(dge_AB_Female), "\n\n")
+
+# TMM normalization
+dge_AB_Female <- calcNormFactors(dge_AB_Female, method = "TMM")
+
+dge_AB_Female <- estimateDisp(dge_AB_Female, design_female)
+fit_female <- glmQLFit(dge_AB_Female, design_female)
+
+contrast_female <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_female
+)
+cat("Contrast")
+print(contrast_female)
+
+qlf_female <- glmQLFTest(fit_female, contrast = contrast_female)
+
+DEG_female <- topTags(qlf_female, n = Inf)$table
+DEG_female$Gene_ID <- rownames(DEG_female)
+
+sig_female_EdgeR      <- DEG_female[DEG_female$FDR < 0.1, ]
+sig_female_up_EdgeR   <- sig_female[sig_female_EdgeR$logFC > 0, ]
+sig_female_down_EdgeR <- sig_female[sig_female_EdgeR$logFC < 0, ]
+
+cat("Female-Only DEG Results 0.1 - EdgeR")
+cat("Total significant DEGs:", nrow(sig_female_EdgeR), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_up_EdgeR), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_down_EdgeR), "\n\n")
+
+stringent_sig_female_EdgeR      <- DEG_female[DEG_female$FDR < 0.05, ]
+stringent_sig_female_up_EdgeR   <- stringent_sig_female_EdgeR[stringent_sig_female_EdgeR$logFC > 0, ]
+stringent_sig_female_down_EdgeR <- stringent_sig_female_EdgeR[stringent_sig_female_EdgeR$logFC < 0, ]
+
+cat("Female-Only DEG Results 0.05 - EdgeR")
+cat("Total significant DEGs:", nrow(stringent_sig_female_EdgeR), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_female_up_EdgeR), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_female_down_EdgeR), "\n\n")
+
+```
+
+# Upset Plot for all three methods - Males only
+
+```{r}
+# Install & Load packages
+library(UpSetR)
+
+# Make characters - Run once & then not again
+#sig_male_voom_up <- as.character(sig_male_voom_up$Gene_ID)
+#sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
+#sig_male_up_EdgeR <- as.character(sig_male_up_EdgeR$Gene_ID)
+
+#sig_male_voom_down <- as.character(sig_male_voom_down$Gene_ID)
+#sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
+#sig_male_down_EdgeR <- as.character(sig_male_down_EdgeR$Gene_ID)
+
+# Build lists
+up_list <- list(
+  LimmaVoom = sig_male_voom_up,
+  DESeq2    = sig_male_deseq_up,
+  edgeR     = sig_male_up_EdgeR
+)
+
+down_list <- list(
+  LimmaVoom = sig_male_voom_down,
+  DESeq2    = sig_male_deseq_down,
+  edgeR     = sig_male_down_EdgeR
+)
+
+# Plot upregulated
+png("Male_DGEProgramComp_up_UpSet.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(up_list),
+  mainbar.y.label = "Male upregulated intersections",
+  sets.x.label = "Gene counts"
+)
+dev.off()
+
+# Plot downregulated
+png("Male_DGEProgramComp_down_UpSet.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(down_list),
+  mainbar.y.label = "Male downregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+```
+# Upset Plot for all three methods - Females only
+
+```{r}
+# Install & Load packages
+library(UpSetR)
+
+# Make characters - Run once & then not again
+#sig_female_voom_up <- as.character(sig_female_voom_up$Gene_ID)
+#sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
+#sig_female_up_EdgeR <- as.character(sig_female_up_EdgeR$Gene_ID)
+
+#sig_female_voom_down <- as.character(sig_female_voom_down$Gene_ID)
+#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+#sig_female_down_EdgeR <- as.character(sig_female_down_EdgeR$Gene_ID)
+
+# Build lists
+female_up_list <- list(
+  LimmaVoom = sig_female_voom_up,
+  DESeq2    = sig_female_deseq_up,
+  edgeR     = sig_female_up_EdgeR
+)
+
+female_down_list <- list(
+  LimmaVoom = sig_female_voom_down,
+  DESeq2    = sig_female_deseq_down,
+  edgeR     = sig_female_down_EdgeR
+)
+
+female_up_list <- lapply(female_up_list, function(x) unique(na.omit(x)))
+
+
+# Plot upregulated
+png("Female_DGEProgramComp_up_UpSet.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(female_up_list),
+  mainbar.y.label = "Female upregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+
+# Plot downregulated
+png("Female_DGEProgramComp_down_UpSet.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(female_down_list),
+  mainbar.y.label = "Female downregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
 ```
 
