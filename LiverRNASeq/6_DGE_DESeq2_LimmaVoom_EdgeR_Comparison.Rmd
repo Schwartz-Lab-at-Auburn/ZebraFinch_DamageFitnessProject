@@ -1,0 +1,654 @@
+---
+title: "6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison"
+author: "Ali Amer, modified by Brynleigh Payne"
+date: "2026-06-22"
+output: md_document
+---
+
+# Script Goal: 
+# 1. Convert raw count reads of samples sent for Liver RNA-Seq (A vs B) from prep.dy script   
+# 2. Check library sizes across A vs B & Normalize raw count data
+# 3. Run DGE with edgeR, limma and DESeq2 (Males Only & Females Only)
+# 4. Run Pathway Enrichment & WGCNA
+
+#### Input the count data, the gene(/transcript) count matrix and labels
+
+```{r}
+Raw_Counts <- as.matrix(read.csv("ZF_Liver_rawgene_count_matrix.csv", row.names="gene_id"))
+dim(Raw_Counts)
+head(Raw_Counts)
+```
+
+#### Input the meta data or phenotype data
+# Note: The PHENO_DATA file contains information on each sample, e.g., sex or population. The exact way to import this depends on the format of the file.
+##  Make sure the individual names match between the count data and the PHENO_DATA
+
+```{r}
+ZF_Liver_sample_list <-(read.table("PHENO_DATA_Liver_Control_Heat.txt", header=TRUE, row.names=1, sep = "\t"))
+dim(ZF_Liver_sample_list)
+head(ZF_Liver_sample_list)
+```
+
+## Subset the countdata to only include Control (A) and Heat (B) samples 
+
+```{r}
+samples_to_keep <- rownames(ZF_Liver_sample_list)
+
+length(intersect(samples_to_keep, colnames(Raw_Counts)))
+
+all(samples_to_keep %in% colnames(Raw_Counts))
+
+setdiff(samples_to_keep, colnames(Raw_Counts))
+
+setdiff(colnames(Raw_Counts), samples_to_keep)
+
+common_samples <- intersect(samples_to_keep, colnames(Raw_Counts))
+
+Raw_Counts_AB <- Raw_Counts[, common_samples]
+ZF_Liver_sample_list <- ZF_Liver_sample_list[common_samples, ]
+
+ZF_Liver_sample_list <- ZF_Liver_sample_list[colnames(Raw_Counts_AB), ]
+
+identical(rownames(ZF_Liver_sample_list), colnames(Raw_Counts_AB))
+```
+
+# Check all sample IDs in colData are also in CountData and match their orders
+
+```{r}
+all(rownames(ZF_Liver_sample_list) %in% colnames(Raw_Counts_AB))
+Raw_Counts_AB <- Raw_Counts_AB[, rownames(ZF_Liver_sample_list)]
+all(rownames(ZF_Liver_sample_list) == colnames(Raw_Counts_AB))
+```
+
+## Manually set reference levels for sex and treatment
+
+```{r}
+ZF_Liver_sample_list$sex <- relevel(factor(ZF_Liver_sample_list$sex), ref = "female")
+ZF_Liver_sample_list$treatment <- relevel(factor(ZF_Liver_sample_list$treatment), ref = "Control")
+```
+
+# Construct DGEList object
+```{r}
+DGE_AB <- DGEList(
+  counts  = Raw_Counts_AB,
+  samples = ZF_Liver_sample_list
+)
+```
+
+# Calculate Library Size & Make BoxPlots (A vs B)
+
+```{r}
+
+cpm_AB <- cpm(DGE_AB)
+lcpm_AB <- cpm(DGE_AB, log=TRUE)
+summary(lcpm_AB)
+
+# Boxplot by Treatment
+
+boxplot(
+  DGE_AB$samples$lib.size/1e6 ~ DGE_AB$samples$treatment,
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment (Control vs Heat)",
+  col = c("lightblue", "coral"),
+  outline = FALSE
+)
+
+
+# Boxplot by Treatment & Sex
+
+boxplot(
+  DGE_AB$samples$lib.size/1e6 ~ interaction(DGE_AB$samples$treatment, DGE_AB$samples$sex),
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment and Sex (Control vs Heat)",
+  las = 3,
+  col = rep(c("lightblue", "coral"), 2),
+  outline = FALSE
+)
+
+# Display
+par(mfrow = c(1, 2))
+boxplot(
+  DGE_AB$samples$lib.size/1e6 ~ DGE_AB$samples$treatment,
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment",
+  col = c("lightblue", "coral"),
+  outline = FALSE
+)
+
+boxplot(
+  DGE_AB$samples$lib.size/1e6 ~ interaction(DGE_AB$samples$treatment, DGE_AB$samples$sex),
+  ylab = "Library size (millions)",
+  main = "Library Size by Treatment and Sex",
+  xlab = "",
+  las = 3,
+  col = rep(c("lightblue", "coral"), 2),
+  outline = FALSE
+)
+
+```
+
+### DGE with limma-voom ###
+
+```{r}
+
+library(limma)
+
+### Males only
+
+## Remove females samples
+AHDB1_AB_Male <- ZF_Liver_sample_list[!grepl("female", ZF_Liver_sample_list$sex), ]
+head(AHDB1_AB_Male)
+
+## Subset the countdata to only include Control (A) and Heat (B) samples 
+samples_to_keep <- rownames(AHDB1_AB_Male)
+
+length(intersect(samples_to_keep, colnames(Raw_Counts_AB)))
+
+all(samples_to_keep %in% colnames(Raw_Counts_AB))
+
+setdiff(samples_to_keep, colnames(Raw_Counts_AB))
+
+setdiff(colnames(Raw_Counts_AB), samples_to_keep)
+
+common_samples <- intersect(samples_to_keep, colnames(Raw_Counts_AB))
+
+Counts_AB_Male <- Raw_Counts_AB[, common_samples]
+AHDB1_AB_Male <- AHDB1_AB_Male[common_samples, ]
+
+AHDB1_AB_Male <- AHDB1_AB_Male[colnames(Counts_AB_Male), ]
+
+identical(rownames(AHDB1_AB_Male), colnames(Counts_AB_Male))
+
+dge_AB_Male_voom <- DGEList(
+  counts  = Counts_AB_Male,
+  samples = AHDB1_AB_Male
+)
+
+# Sanity Check
+table(dge_AB_Male_voom$samples$treatment)
+cat("Male-Only Subset\n")
+cat("Total genes (before filtering):", nrow(dge_AB_Male_voom), "\n\n")
+
+dge_AB_Male_voom$samples$treatment <- droplevels(factor(dge_AB_Male_voom$samples$treatment))
+
+design_male_voom <- model.matrix(~ 0 + treatment, data = dge_AB_Male_voom$samples)
+colnames(design_male_voom) <- levels(dge_AB_Male_voom$samples$treatment)
+
+keep_male_voom <- filterByExpr(dge_AB_Male_voom, design_male_voom)
+dge_AB_Male_voom <- dge_AB_Male_voom[keep_male_voom, , keep.lib.sizes = FALSE]
+
+cat("Genes after filtering:", nrow(dge_AB_Male_voom), "\n\n")
+
+dge_AB_Male_voom <- calcNormFactors(dge_AB_Male_voom, method = "TMM")
+
+v_male <- voom(dge_AB_Male_voom, design_male_voom, plot = TRUE)
+
+fit_male_voom <- lmFit(v_male, design_male_voom)
+
+contrast_male_voom <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_male_voom
+)
+cat("Contrast:\n")
+print(contrast_male_voom)
+
+fit_male_voom <- contrasts.fit(fit_male_voom, contrast_male_voom)
+fit_male_voom <- eBayes(fit_male_voom)
+
+DEG_male_voom <- topTable(fit_male_voom, coef = "Heat_vs_Control", n = Inf, sort.by = "P")
+DEG_male_voom$Gene_ID <- rownames(DEG_male_voom)
+
+sig_male_voom <- DEG_male_voom[DEG_male_voom$adj.P.Val < 0.1, ]
+sig_male_voom_up <- sig_male_voom[sig_male_voom$logFC > 0, ]
+sig_male_voom_down <- sig_male_voom[sig_male_voom$logFC < 0, ]
+
+cat("Male-Only DEG Results 0.1 (limma-voom)\n")
+cat("Total significant DEGs:", nrow(sig_male_voom), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_voom_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_voom_down), "\n\n")
+
+stringent_sig_male_voom <- DEG_male_voom[DEG_male_voom$adj.P.Val < 0.05, ]
+stringent_sig_male_voom_up <- stringent_sig_male_voom[stringent_sig_male_voom$logFC > 0, ]
+stringent_sig_male_voom_down <- stringent_sig_male_voom[stringent_sig_male_voom$logFC < 0, ]
+
+cat("Male-Only DEG Results 0.05 (limma-voom)\n")
+cat("Total significant DEGs:", nrow(stringent_sig_male_voom), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_male_voom_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_male_voom_down), "\n\n")
+
+
+# Plot mean variance trend
+v_male <- voom(dge_AB_Male_voom, design_male_voom, plot = TRUE)
+
+
+### Females only
+
+## Remove males samples
+AHDB1_AB_Female <- ZF_Liver_sample_list[!grepl("^male$", ZF_Liver_sample_list$sex), ]
+head(AHDB1_AB_Female)
+
+## Subset the countdata to only include female Control (A) and Heat (B) samples 
+samples_to_keep_female <- rownames(AHDB1_AB_Female)
+
+length(intersect(samples_to_keep_female, colnames(Raw_Counts_AB)))
+
+all(samples_to_keep_female %in% colnames(Raw_Counts_AB))
+
+setdiff(samples_to_keep_female, colnames(Raw_Counts_AB))
+
+setdiff(colnames(Raw_Counts_AB), samples_to_keep_female)
+
+common_samples <- intersect(samples_to_keep_female, colnames(Raw_Counts_AB))
+
+Counts_AB_Female <- Raw_Counts_AB[, common_samples]
+AHDB1_AB_Female <- AHDB1_AB_Female[common_samples, ]
+
+AHDB1_AB_Female <- AHDB1_AB_Female[colnames(Counts_AB_Female), ]
+
+identical(rownames(AHDB1_AB_Female), colnames(Counts_AB_Female))
+
+dge_AB_Female_voom <- DGEList(
+  counts  = Counts_AB_Female,
+  samples = AHDB1_AB_Female
+)
+
+# Sanity Check
+table(dge_AB_Female_voom$samples$treatment)
+cat("Female-Only Subset\n")
+cat("Total genes (before filtering):", nrow(dge_AB_Female_voom), "\n\n")
+
+dge_AB_Female_voom$samples$treatment <- droplevels(factor(dge_AB_Female_voom$samples$treatment))
+
+design_female_voom <- model.matrix(~ 0 + treatment, data = dge_AB_Female_voom$samples)
+colnames(design_female_voom) <- levels(dge_AB_Female_voom$samples$treatment)
+
+keep_female_voom <- filterByExpr(dge_AB_Female_voom, design_female_voom)
+dge_AB_Female_voom <- dge_AB_Female_voom[keep_female_voom, , keep.lib.sizes = FALSE]
+
+cat("Genes after filtering:", nrow(dge_AB_Female_voom), "\n\n")
+
+dge_AB_Female_voom <- calcNormFactors(dge_AB_Female_voom, method = "TMM")
+
+v_female <- voom(dge_AB_Female_voom, design_female_voom, plot = TRUE)
+
+fit_female_voom <- lmFit(v_female, design_female_voom)
+
+contrast_female_voom <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_female_voom
+)
+cat("Contrast:\n")
+print(contrast_female_voom)
+
+fit_female_voom <- contrasts.fit(fit_female_voom, contrast_female_voom)
+fit_female_voom <- eBayes(fit_female_voom)
+
+DEG_female_voom <- topTable(fit_female_voom, coef = "Heat_vs_Control", n = Inf, sort.by = "P")
+DEG_female_voom$Gene_ID <- rownames(DEG_female_voom)
+
+sig_female_voom <- DEG_female_voom[DEG_female_voom$adj.P.Val < 0.1, ]
+sig_female_voom_up <- sig_female_voom[sig_female_voom$logFC > 0, ]
+sig_female_voom_down <- sig_female_voom[sig_female_voom$logFC < 0, ]
+
+cat("Female-Only DEG Results 0.1 (limma-voom)\n")
+cat("Total significant DEGs:", nrow(sig_female_voom), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_voom_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_voom_down), "\n\n")
+
+stringent_sig_female_voom <- DEG_female_voom[DEG_female_voom$adj.P.Val < 0.05, ]
+stringent_sig_female_voom_up <- stringent_sig_female_voom[stringent_sig_female_voom$logFC > 0, ]
+stringent_sig_female_voom_down <- stringent_sig_female_voom[stringent_sig_female_voom$logFC < 0, ]
+
+cat("Female-Only DEG Results 0.05 (limma-voom)\n")
+cat("Total significant DEGs:", nrow(stringent_sig_female_voom), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_female_voom_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_female_voom_down), "\n\n")
+
+# Plot mean variance trend
+v_female <- voom(dge_AB_Female_voom, design_female_voom, plot = TRUE)
+
+```
+
+### DGE with DESeq2 ###
+
+```{r}
+library(DESeq2)
+
+
+## Males only
+
+# Build DESeq2 object
+dds_male <- DESeqDataSetFromMatrix(
+  countData = Counts_AB_Male,
+  colData   = AHDB1_AB_Male,
+  design    = ~ 0 + treatment
+)
+
+dds_male <- DESeq(dds_male)
+
+res_male <- results(
+  dds_male,
+  contrast = c("treatment", "Heat", "Control"),
+  alpha    = 0.05
+)
+
+summary(res_male)
+
+DEG_male_deseq <- as.data.frame(res_male)
+DEG_male_deseq$Gene_ID <- rownames(DEG_male_deseq)
+
+# Remove NA's
+DEG_male_deseq <- DEG_male_deseq[
+  !is.na(DEG_male_deseq$padj) & !is.na(DEG_male_deseq$log2FoldChange),
+]
+cat("Genes after NA removal:", nrow(DEG_male_deseq), "\n\n")
+
+# Subset DEG"s into upregulated and downregulated 
+sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.1, ]
+sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 0, ]
+sig_male_deseq_down <- sig_male_deseq[sig_male_deseq$log2FoldChange < 0, ]
+
+cat("Male-Only DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_male_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_deseq_down), "\n\n")
+
+stringent_sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.05, ]
+stringent_sig_male_deseq_up   <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange > 0, ]
+stringent_sig_male_deseq_down <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange < 0, ]
+
+cat("Male-Only DEG Results 0.05 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(stringent_sig_male_deseq), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_male_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_male_deseq_down), "\n\n")
+
+
+## Females only
+
+# Build DESeq2 object
+dds_female <- DESeqDataSetFromMatrix(
+  countData = Counts_AB_Female,
+  colData   = AHDB1_AB_Female,
+  design    = ~ 0 + treatment
+)
+
+keep_female_deseq <- rowSums(counts(dds_female)) >= 10
+dds_female <- dds_female[keep_female_deseq, ]
+cat("Genes after filtering:", nrow(dds_female), "\n\n")
+
+dds_female <- DESeq(dds_female)
+
+res_female <- results(
+  dds_female,
+  contrast = c("treatment", "Heat", "Control"),
+  alpha    = 0.05
+)
+
+summary(res_female)
+
+DEG_female_deseq <- as.data.frame(res_female)
+DEG_female_deseq$Gene_ID <- rownames(DEG_female_deseq)
+
+# Remove NA's
+DEG_female_deseq <- DEG_female_deseq[
+  !is.na(DEG_female_deseq$padj) & !is.na(DEG_female_deseq$log2FoldChange),
+]
+cat("Genes after NA removal:", nrow(DEG_female_deseq), "\n\n")
+
+# Subset DEG's into upregulated and downregulated
+sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.1, ]
+sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 0, ]
+sig_female_deseq_down <- sig_female_deseq[sig_female_deseq$log2FoldChange < 0, ]
+
+cat("Female-Only DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_female_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_deseq_down), "\n\n")
+
+stringent_sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.05, ]
+stringent_sig_female_deseq_up   <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange > 0, ]
+stringent_sig_female_deseq_down <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange < 0, ]
+
+cat("Female-Only DEG Results 0.05 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(stringent_sig_female_deseq), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_female_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_female_deseq_down), "\n\n")
+
+```
+
+### DGE with Edge R ###
+
+
+```{r}
+library(edgeR)
+
+# Males only
+dim(AHDB1_AB_Male)
+
+dge_AB_Male <- DGEList(
+  counts  = Counts_AB_Male,
+  samples = AHDB1_AB_Male
+)
+
+# Set factor and build design matrix
+dge_AB_Male$samples$treatment <- droplevels(factor(dge_AB_Male$samples$treatment))
+
+design_male <- model.matrix(~ 0 + treatment, data = dge_AB_Male$samples)
+colnames(design_male) <- levels(dge_AB_Male$samples$treatment)
+table(dge_AB_Male$samples$treatment)
+
+cat("Total genes (before filtering):", nrow(dge_AB_Male), "\n\n")
+
+# filter using the design matrix
+keep_male <- filterByExpr(dge_AB_Male, design_male)
+dge_AB_Male <- dge_AB_Male[keep_male, , keep.lib.sizes = FALSE]
+cat("Total genes (after filtering):", nrow(dge_AB_Male), "\n\n")
+
+# TMM normalization
+dge_AB_Male <- calcNormFactors(dge_AB_Male, method = "TMM")
+
+dge_AB_Male <- estimateDisp(dge_AB_Male, design_male)
+fit_male <- glmQLFit(dge_AB_Male, design_male)
+
+contrast_male <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_male
+)
+cat("Contrast")
+print(contrast_male)
+
+qlf_male <- glmQLFTest(fit_male, contrast = contrast_male)
+
+DEG_male <- topTags(qlf_male, n = Inf)$table
+DEG_male$Gene_ID <- rownames(DEG_male)
+
+sig_male_EdgeR <- DEG_male[DEG_male$FDR < 0.1, ]
+sig_male_up_EdgeR <- sig_male_EdgeR[sig_male_EdgeR$logFC > 0, ]
+sig_male_down_EdgeR <- sig_male_EdgeR[sig_male_EdgeR$logFC < 0, ]
+
+cat("Male-Only DEG Results 0.1 - EdgeR")
+cat("Total significant DEGs:", nrow(sig_male_EdgeR), "\n")
+cat("Upregulated in Heat:", nrow(sig_male_up_EdgeR), "\n")
+cat("Downregulated in Heat:", nrow(sig_male_down_EdgeR), "\n\n")
+
+
+stringent_sig_male_EdgeR <- DEG_male[DEG_male$FDR < 0.05, ]
+stringent_sig_male_up_EdgeR <- stringent_sig_male_EdgeR[stringent_sig_male_EdgeR$logFC > 0, ]
+stringent_sig_male_down_EdgeR <- stringent_sig_male_EdgeR[stringent_sig_male_EdgeR$logFC < 0, ]
+
+cat("Male-Only DEG Results 0.05 - EdgeR")
+cat("Total significant DEGs:", nrow(stringent_sig_male_EdgeR), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_male_up_EdgeR), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_male_down_EdgeR), "\n\n")
+
+#Females only
+dim(AHDB1_AB_Female)
+
+dge_AB_Female <- DGEList(
+  counts  = Counts_AB_Female,
+  samples = AHDB1_AB_Female
+)
+
+# Set factor and build design matrix
+dge_AB_Female$samples$treatment <- droplevels(factor(dge_AB_Female$samples$treatment))
+
+design_female <- model.matrix(~ 0 + treatment, data = dge_AB_Female$samples)
+colnames(design_female) <- levels(dge_AB_Female$samples$treatment)
+table(dge_AB_Female$samples$treatment)
+
+cat("Total genes (before filtering):", nrow(dge_AB_Female), "\n\n")
+
+# filter using the design matrix
+keep_female <- filterByExpr(dge_AB_Female, design_female)
+dge_AB_Female <- dge_AB_Female[keep_female, , keep.lib.sizes = FALSE]
+cat("Total genes (after filtering):", nrow(dge_AB_Female), "\n\n")
+
+# TMM normalization
+dge_AB_Female <- calcNormFactors(dge_AB_Female, method = "TMM")
+
+dge_AB_Female <- estimateDisp(dge_AB_Female, design_female)
+fit_female <- glmQLFit(dge_AB_Female, design_female)
+
+contrast_female <- makeContrasts(
+  Heat_vs_Control = Heat - Control,
+  levels = design_female
+)
+cat("Contrast")
+print(contrast_female)
+
+qlf_female <- glmQLFTest(fit_female, contrast = contrast_female)
+
+DEG_female <- topTags(qlf_female, n = Inf)$table
+DEG_female$Gene_ID <- rownames(DEG_female)
+
+sig_female_EdgeR      <- DEG_female[DEG_female$FDR < 0.1, ]
+sig_female_up_EdgeR   <- sig_female_EdgeR[sig_female_EdgeR$logFC > 0, ]
+sig_female_down_EdgeR <- sig_female_EdgeR[sig_female_EdgeR$logFC < 0, ]
+
+cat("Female-Only DEG Results 0.1 - EdgeR")
+cat("Total significant DEGs:", nrow(sig_female), "\n")
+cat("Upregulated in Heat:", nrow(sig_female_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_female_down), "\n\n")
+
+stringent_sig_female_EdgeR      <- DEG_female[DEG_female$FDR < 0.05, ]
+stringent_sig_female_up_EdgeR   <- stringent_sig_female_EdgeR[stringent_sig_female_EdgeR$logFC > 0, ]
+stringent_sig_female_down_EdgeR <- stringent_sig_female_EdgeR[stringent_sig_female_EdgeR$logFC < 0, ]
+
+cat("Female-Only DEG Results 0.05 - EdgeR")
+cat("Total significant DEGs:", nrow(stringent_sig_female), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_female_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_female_down), "\n\n")
+
+```
+
+# Upset Plot for all three methods - Males only
+
+```{r}
+# Install & Load packages
+library(UpSetR)
+
+# Make characters - Run once & then not again
+#sig_male_voom_up <- as.character(sig_male_voom_up$Gene_ID)
+#sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
+#sig_male_up_EdgeR <- as.character(sig_male_up_EdgeR$Gene_ID)
+
+#sig_male_voom_down <- as.character(sig_male_voom_down$Gene_ID)
+#sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
+#sig_male_down_EdgeR <- as.character(sig_male_down_EdgeR$Gene_ID)
+
+# Build lists
+up_list <- list(
+  LimmaVoom = sig_male_voom_up,
+  DESeq2    = sig_male_deseq_up,
+  edgeR     = sig_male_up_EdgeR
+)
+
+down_list <- list(
+  LimmaVoom = sig_male_voom_down,
+  DESeq2    = sig_male_deseq_down,
+  edgeR     = sig_male_down_EdgeR
+)
+
+# Plot upregulated
+png("Male_DGEProgramComp_up_UpSet_Liver.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(up_list),
+  mainbar.y.label = "Male upregulated intersections",
+  sets.x.label = "Gene counts"
+)
+dev.off()
+
+# Plot downregulated
+png("Male_DGEProgramComp_down_UpSet_Liver.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(down_list),
+  mainbar.y.label = "Male downregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+```
+# Upset Plot for all three methods - Females only
+
+```{r}
+# Install & Load packages
+library(UpSetR)
+
+# Make characters - Run once & then not again
+#sig_female_voom_up <- as.character(sig_female_voom_up$Gene_ID)
+#sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
+#sig_female_up_EdgeR <- as.character(sig_female_up_EdgeR$Gene_ID)
+
+#sig_female_voom_down <- as.character(sig_female_voom_down$Gene_ID)
+#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+#sig_female_down_EdgeR <- as.character(sig_female_down_EdgeR$Gene_ID)
+
+# Build lists
+female_up_list <- list(
+  LimmaVoom = sig_female_voom_up,
+  DESeq2    = sig_female_deseq_up,
+  edgeR     = sig_female_up_EdgeR
+)
+
+female_down_list <- list(
+  LimmaVoom = sig_female_voom_down,
+  DESeq2    = sig_female_deseq_down,
+  edgeR     = sig_female_down_EdgeR
+)
+
+female_up_list <- lapply(female_up_list, function(x) unique(na.omit(x)))
+
+
+# Plot upregulated
+png("Female_DGEProgramComp_up_UpSet_Liver.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(female_up_list),
+  mainbar.y.label = "Female upregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+
+# Plot downregulated
+png("Female_DGEProgramComp_down_UpSet_Liver.png", width = 2000, height = 1000, res = 150)
+
+par(mfrow = c(1,2))
+
+upset(
+  fromList(female_down_list),
+  mainbar.y.label = "Female downregulated intersections",
+  sets.x.label = "Gene counts"
+)
+
+dev.off()
+```
+
