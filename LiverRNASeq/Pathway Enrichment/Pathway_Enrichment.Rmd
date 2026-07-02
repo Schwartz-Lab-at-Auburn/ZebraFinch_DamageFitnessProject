@@ -34,7 +34,7 @@ library(ggplot2)
 
 ```
 
-# CONFIG
+# Load Data, Define Output Paths & Create Directories
 
 ```{r}
 
@@ -89,7 +89,7 @@ cat("\nSample female symbols:\n")
 print(head(DEG_female_deseq$Symbol, 5))
 ```
 
-# BioMart: map Symbol -> Entrez (built once, shared across both sexes)
+# BioMart: map Symbol -> Entrez 
 
 ```{r}
 mart_finch <- useEnsembl(
@@ -112,6 +112,7 @@ map_ZF <- getBM(
 # Map Entrez onto each sex's DEG table
 
 ```{r}
+
 DEG_male_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_male_deseq$Symbol, map_ZF$external_gene_name)]
 DEG_female_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_female_deseq$Symbol, map_ZF$external_gene_name)]
 
@@ -124,12 +125,14 @@ cat("Female mapping results:\n")
 cat("  Total DEGs:", nrow(DEG_female_deseq), "\n")
 cat("  With Entrez IDs:", sum(!is.na(DEG_female_deseq$Entrez)), "\n")
 cat("  Success rate:", round(sum(!is.na(DEG_female_deseq$Entrez)) / nrow(DEG_female_deseq) * 100, 1), "%\n\n")
+
 ```
 
 ### GSEA: Males ###
 
 ```{r}
-cat("=== GSEA: Males ===\n")
+
+cat(" GSEA: Males \n")
 
 gene_list_male <- DEG_male_deseq %>%
   filter(!is.na(Entrez)) %>%
@@ -180,7 +183,8 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
 ### GSEA: Females ###
 
 ```{r}
-cat("=== GSEA: Females ===\n")
+
+cat("GSEA: Females\n")
 
 gene_list_female <- DEG_female_deseq %>%
   filter(!is.na(Entrez)) %>%
