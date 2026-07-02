@@ -1,0 +1,229 @@
+---
+title: "PathwayEnrichment"
+author: "Ali Amer"
+date: "2026-07-02"
+output: html_document
+---
+
+# Script Goal:
+# 1. Load exported DESeq2 DEG results (male & female) from CSV
+# 2. Clean Gene_ID -> Symbol and map to Entrez ID via biomaRt
+# 3. Build ranked gene lists (log2FoldChange) for GSEA
+# 4. Run gseKEGG (organism = "tgu") for Male and Female separately
+# 5. Export KEGG GSEA results to CSV and produce dotplots (Up in Heat / Down in Heat)
+# 6  Run WGCNA with and without CORT 
+# 7  Run Gene Ontology
+
+# Clear Memory and Check working directory
+
+```{r}
+
+rm(list = ls(all = TRUE))
+getwd()
+
+```
+
+# Load packages
+
+```{r}
+
+library(dplyr)
+library(biomaRt)
+library(clusterProfiler)
+library(ggplot2)
+
+```
+
+# CONFIG
+
+```{r}
+
+CONFIG <- list(
+  # Input CSVs exported from the DESeq2 chunk of 6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison
+  male_csv    = "DEG_male_deseq_allgenes.csv",
+  female_csv  = "DEG_female_deseq_allgenes.csv",
+
+  # Ensembl BioMart
+  biomart_dataset = "tguttata_gene_ensembl",
+  biomart_version = 115,
+
+  # KEGG
+  kegg_organism = "tgu",
+  pvalue_cutoff = 0.05,
+
+  # Output paths
+  out_dir_male   = "Results/GSEA/DESeq2_Male",
+  out_dir_female = "Results/GSEA/DESeq2_Female"
+)
+
+dir.create(CONFIG$out_dir_male,   recursive = TRUE, showWarnings = FALSE)
+dir.create(CONFIG$out_dir_female, recursive = TRUE, showWarnings = FALSE)
+```
+
+# Load exported DESeq2 DEG CSVs
+
+```{r}
+DEG_male_deseq   <- read.csv(CONFIG$male_csv,   stringsAsFactors = FALSE)
+DEG_female_deseq <- read.csv(CONFIG$female_csv, stringsAsFactors = FALSE)
+
+cat("Male DEG rows loaded:",   nrow(DEG_male_deseq),   "\n")
+cat("Female DEG rows loaded:", nrow(DEG_female_deseq), "\n\n")
+
+stopifnot("log2FoldChange" %in% colnames(DEG_male_deseq))
+stopifnot("log2FoldChange" %in% colnames(DEG_female_deseq))
+stopifnot("Gene_ID" %in% colnames(DEG_male_deseq))
+stopifnot("Gene_ID" %in% colnames(DEG_female_deseq))
+```
+
+# Clean Gene IDs -> Symbol
+
+# Gene_ID format inherited from the raw count matrix rownames, e.g. "gene-NR3C1|NR3C1"
+
+```{r}
+DEG_male_deseq$Symbol   <- sub("\\|.*", "", sub("^gene-", "", DEG_male_deseq$Gene_ID))
+DEG_female_deseq$Symbol <- sub("\\|.*", "", sub("^gene-", "", DEG_female_deseq$Gene_ID))
+
+cat("Sample male symbols:\n")
+print(head(DEG_male_deseq$Symbol, 5))
+cat("\nSample female symbols:\n")
+print(head(DEG_female_deseq$Symbol, 5))
+```
+
+# BioMart: map Symbol -> Entrez (built once, shared across both sexes)
+
+```{r}
+mart_finch <- useEnsembl(
+  biomart = "ensembl",
+  dataset = CONFIG$biomart_dataset,
+  version = CONFIG$biomart_version
+)
+
+all_symbols <- unique(c(DEG_male_deseq$Symbol, DEG_female_deseq$Symbol))
+cat("Unique symbols to map (male + female union):", length(all_symbols), "\n\n")
+
+map_ZF <- getBM(
+  attributes = c("external_gene_name", "entrezgene_id"),
+  filters    = "external_gene_name",
+  values     = all_symbols,
+  mart       = mart_finch
+)
+```
+
+# Map Entrez onto each sex's DEG table
+
+```{r}
+DEG_male_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_male_deseq$Symbol, map_ZF$external_gene_name)]
+DEG_female_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_female_deseq$Symbol, map_ZF$external_gene_name)]
+
+cat("Male mapping results:\n")
+cat("  Total DEGs:", nrow(DEG_male_deseq), "\n")
+cat("  With Entrez IDs:", sum(!is.na(DEG_male_deseq$Entrez)), "\n")
+cat("  Success rate:", round(sum(!is.na(DEG_male_deseq$Entrez)) / nrow(DEG_male_deseq) * 100, 1), "%\n\n")
+
+cat("Female mapping results:\n")
+cat("  Total DEGs:", nrow(DEG_female_deseq), "\n")
+cat("  With Entrez IDs:", sum(!is.na(DEG_female_deseq$Entrez)), "\n")
+cat("  Success rate:", round(sum(!is.na(DEG_female_deseq$Entrez)) / nrow(DEG_female_deseq) * 100, 1), "%\n\n")
+```
+
+### GSEA: Males ###
+
+```{r}
+cat("=== GSEA: Males ===\n")
+
+gene_list_male <- DEG_male_deseq %>%
+  filter(!is.na(Entrez)) %>%
+  arrange(desc(log2FoldChange)) %>%
+  { setNames(.$log2FoldChange, as.character(.$Entrez)) } %>%
+  .[!duplicated(names(.))]
+
+gene_list_male <- sort(gene_list_male, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_male), "\n\n")
+
+gseKEGG_male <- gseKEGG(
+  gene_list_male,
+  organism     = CONFIG$kegg_organism,
+  pvalueCutoff = CONFIG$pvalue_cutoff,
+  verbose      = FALSE
+)
+
+if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
+  cat("  \u2713 Found", nrow(gseKEGG_male@result), "pathways\n\n")
+
+  write.csv(
+    gseKEGG_male@result,
+    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.csv"),
+    row.names = FALSE
+  )
+
+  p_male <- dotplot(
+    gseKEGG_male,
+    showCategory = 20,
+    split = ".sign",
+    title = "Male DESeq2 GSEA KEGG"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
+    )
+
+  ggsave(
+    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
+    p_male, width = 14, height = 10, dpi = 300
+  )
+  print(p_male)
+} else {
+  cat("  No significant pathways found for Males.\n\n")
+}
+```
+
+### GSEA: Females ###
+
+```{r}
+cat("=== GSEA: Females ===\n")
+
+gene_list_female <- DEG_female_deseq %>%
+  filter(!is.na(Entrez)) %>%
+  arrange(desc(log2FoldChange)) %>%
+  { setNames(.$log2FoldChange, as.character(.$Entrez)) } %>%
+  .[!duplicated(names(.))]
+
+gene_list_female <- sort(gene_list_female, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_female), "\n\n")
+
+gseKEGG_female <- gseKEGG(
+  gene_list_female,
+  organism     = CONFIG$kegg_organism,
+  pvalueCutoff = CONFIG$pvalue_cutoff,
+  verbose      = FALSE
+)
+
+if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
+  cat("  \u2713 Found", nrow(gseKEGG_female@result), "pathways\n\n")
+
+  write.csv(
+    gseKEGG_female@result,
+    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.csv"),
+    row.names = FALSE
+  )
+
+  p_female <- dotplot(
+    gseKEGG_female,
+    showCategory = 20,
+    split = ".sign",
+    title = "Female DESeq2 GSEA KEGG"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
+    )
+
+  ggsave(
+    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
+    p_female, width = 14, height = 10, dpi = 300
+  )
+  print(p_female)
+} else {
+  cat("  No significant pathways found for Females.\n\n")
+}
+```
