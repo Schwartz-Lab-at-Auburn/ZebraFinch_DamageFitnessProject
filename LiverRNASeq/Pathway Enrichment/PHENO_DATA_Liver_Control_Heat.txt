@@ -23,7 +23,7 @@ ZF_4757_D_L	Heat	male	paired-end
 ZF_4764_D_L	Heat	male	paired-end
 ZF_4767_D_L	Control	female	paired-end
 ZF_4770_D_L	Control	male	paired-end
-ZF_4771_D_L2	Heat	male	paired-end
+ZF_4771_D_L	Heat	male	paired-end
 ZF_4779_D_L	Control	male	paired-end
 ZF_4781_D_L	Control	male	paired-end
 ZF_4783_D_L	Heat	male	paired-end

@@ -392,22 +392,7 @@ if (length(go_female$plots) > 0) {
 
 ```
 
-# Build ranking metric: sign(log2FoldChange) * -log10(pvalue)
-
-
-```{r}
-
-DEG_male_deseq$Rank   <- sign(DEG_male_deseq$log2FoldChange)   * -log10(DEG_male_deseq$pvalue)
-DEG_female_deseq$Rank <- sign(DEG_female_deseq$log2FoldChange) * -log10(DEG_female_deseq$pvalue)
-
-cat("Sample male ranks:\n")
-print(head(DEG_male_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
-cat("\nSample female ranks:\n")
-print(head(DEG_female_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
-
-```
-
-### GSEA: Males ###
+### GSEA_KEGG: Males ###
 
 ```{r}
 
@@ -459,7 +444,7 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
 }
 ```
 
-### GSEA: Females ###
+### GSEA_KEGG: Females ###
 
 ```{r}
 
@@ -511,138 +496,6 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
 }
 
 ```
-
-### Gene Ontology 
-
-```{r}
-
-library(AnnotationHub)
-
-ah <- AnnotationHub()
-zf_orgdb_hits <- query(ah, c("OrgDb", "Taeniopygia guttata"))
-print(zf_orgdb_hits)
-
-orgdb_ZF <- zf_orgdb_hits[[length(zf_orgdb_hits)]]
-
-cat("Available keytypes:\n")
-print(keytypes(orgdb_ZF))
-
-```
-
-### GO GSEA: Males
-
-```{r}
-
-cat(" GO: Males \n")
-
-gene_list_male_symbol <- DEG_male_deseq %>%
-  filter(!is.na(Symbol), Symbol != "") %>%
-  arrange(desc(Rank)) %>%
-  { setNames(.$Rank, .$Symbol) } %>%
-  .[!duplicated(names(.))]
-
-gene_list_male_symbol <- sort(gene_list_male_symbol, decreasing = TRUE)
-cat("  Ranked genes:", length(gene_list_male_symbol), "\n\n")
-
-goGSEA_male <- gseGO(
-  gene_list_male_symbol,
-  OrgDb        = orgdb_ZF,
-  keyType      = CONFIG$go_key_type,
-  ont          = CONFIG$go_ontology,
-  minGSSize    = CONFIG$go_min_gs,
-  maxGSSize    = CONFIG$go_max_gs,
-  pvalueCutoff = CONFIG$pvalue_cutoff,
-  verbose      = FALSE
-)
-
-if (!is.null(goGSEA_male) && nrow(goGSEA_male@result) > 0) {
-  cat("  \u2713 Found", nrow(goGSEA_male@result), "GO terms\n\n")
-
-  write.csv(
-    goGSEA_male@result,
-    file.path(CONFIG$out_dir_male, "GO_GSEA_Male.csv"),
-    row.names = FALSE
-  )
-
-  p_go_male <- dotplot(
-    goGSEA_male,
-    showCategory = 20,
-    split = ".sign",
-    title = paste("Male DESeq2 GO GSEA -", CONFIG$go_ontology)
-  ) +
-    facet_grid(
-      . ~ .sign,
-      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
-
-  ggsave(
-    file.path(CONFIG$out_dir_male, "GO_GSEA_Male.png"),
-    p_go_male, width = 14, height = 10, dpi = 300
-  )
-  print(p_go_male)
-} else {
-  cat("  No significant GO terms found for Males.\n\n")
-}
-
-```
-
-### GO GSEA: Females
-
-```{r}
-
-cat(" GO: Females \n")
-
-gene_list_female_symbol <- DEG_female_deseq %>%
-  filter(!is.na(Symbol), Symbol != "") %>%
-  arrange(desc(Rank)) %>%
-  { setNames(.$Rank, .$Symbol) } %>%
-  .[!duplicated(names(.))]
-
-gene_list_female_symbol <- sort(gene_list_female_symbol, decreasing = TRUE)
-cat("  Ranked genes:", length(gene_list_female_symbol), "\n\n")
-
-goGSEA_female <- gseGO(
-  gene_list_female_symbol,
-  OrgDb        = orgdb_ZF,
-  keyType      = CONFIG$go_key_type,
-  ont          = CONFIG$go_ontology,
-  minGSSize    = CONFIG$go_min_gs,
-  maxGSSize    = CONFIG$go_max_gs,
-  pvalueCutoff = CONFIG$pvalue_cutoff,
-  verbose      = FALSE
-)
-
-if (!is.null(goGSEA_female) && nrow(goGSEA_female@result) > 0) {
-  cat("  \u2713 Found", nrow(goGSEA_female@result), "GO terms\n\n")
-
-  write.csv(
-    goGSEA_female@result,
-    file.path(CONFIG$out_dir_female, "GO_GSEA_Female.csv"),
-    row.names = FALSE
-  )
-
-  p_go_female <- dotplot(
-    goGSEA_female,
-    showCategory = 20,
-    split = ".sign",
-    title = paste("Female DESeq2 GO GSEA -", CONFIG$go_ontology)
-  ) +
-    facet_grid(
-      . ~ .sign,
-      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
-
-  ggsave(
-    file.path(CONFIG$out_dir_female, "GO_GSEA_Female.png"),
-    p_go_female, width = 14, height = 10, dpi = 300
-  )
-  print(p_go_female)
-} else {
-  cat("  No significant GO terms found for Females.\n\n")
-}
-
-```
-
 
 # Load Data Files for WGCNA
 
