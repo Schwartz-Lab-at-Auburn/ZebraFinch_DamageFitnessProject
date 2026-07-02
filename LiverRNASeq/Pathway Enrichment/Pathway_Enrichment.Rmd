@@ -164,6 +164,7 @@ print(head(DEG_female_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
 ### GSEA: Males ###
 
 ```{r}
+
 cat(" GSEA: Males \n")
 
 gene_list_male <- DEG_male_deseq %>%
@@ -280,7 +281,7 @@ print(keytypes(orgdb_ZF))
 ```
 
 # GO GSEA helper: runs BP, MF, and CC for one sex, combines the three dotplots
-# with patchwork, and exports the combined figure (individual per-ontology
+# with patchwork, and exports the combined figure
 
 ```{r}
 
@@ -497,7 +498,7 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
 
 ```
 
-# Load Data Files for WGCNA
+# Load Data Files for WGCNA 
 
 # Built from the raw count matrix + Control/Heat pheno file, subset to Treatment A & B (Control/Heat) and split by sex. CORT is pulled in separately from the master spreadsheet, joined by bird ID extracted from the sample column names.
 
@@ -531,6 +532,8 @@ master_sheet <- read.csv(CONFIG$wgcna_master_csv, stringsAsFactors = FALSE)
 bird_id <- sub("^(ZF_[0-9]+)_.*$", "\\1", rownames(ZF_Liver_sample_list))
 ZF_Liver_sample_list$ID_Band <- bird_id
 
+ZF_Liver_sample_list$ID_Band <- sub("^ZF_", "", ZF_Liver_sample_list$ID_Band)
+
 ZF_Liver_sample_list[[CONFIG$wgcna_cort_col]] <- master_sheet[[CONFIG$wgcna_cort_col]][
   match(ZF_Liver_sample_list$ID_Band, master_sheet$ID_Band)
 ]
@@ -539,7 +542,7 @@ cat("CORT values matched:",
     sum(!is.na(ZF_Liver_sample_list[[CONFIG$wgcna_cort_col]])),
     "/", nrow(ZF_Liver_sample_list), "\n\n")
 
-## --- Split by sex (both subsets remain Control/Heat only) ---
+##  Split by sex 
 AHDB1_AB_Male   <- ZF_Liver_sample_list[!grepl("female", ZF_Liver_sample_list$sex), ]
 AHDB1_AB_Female <- ZF_Liver_sample_list[!grepl("^male$", ZF_Liver_sample_list$sex), ]
 
@@ -616,7 +619,7 @@ run_wgcna <- function(counts, meta, out_dir, label) {
   chosen_power <- sft$powerEstimate
   if (is.na(chosen_power)) {
     cat("  No power reached R^2 > 0.9 automatically \n")
-    chosen_power <- 6   
+    chosen_power <- 6 # Need to choose   
   }
   cat("  Chosen soft power:", chosen_power, "\n\n")
 
@@ -662,7 +665,7 @@ run_wgcna <- function(counts, meta, out_dir, label) {
   )
 
   ##  Module-trait correlations: WITHOUT CORT
-  treatment_numeric <- as.numeric(factor(meta$treatment)) - 1  # Control=0, Heat=1 (or as leveled)
+  treatment_numeric <- as.numeric(factor(meta$treatment)) - 1  # Control=0, Heat=1 
   traits_no_cort <- data.frame(Treatment = treatment_numeric)
   rownames(traits_no_cort) <- rownames(meta)
   traits_no_cort <- traits_no_cort[rownames(expr_mat), , drop = FALSE]
@@ -726,7 +729,7 @@ run_wgcna <- function(counts, meta, out_dir, label) {
     cat("  Skipping CORT run — CORT column not found or include_cort = FALSE\n")
   }
 
-  ## --- Hub gene identification (intramodular connectivity) ---
+  ##  Hub gene identification 
   kme <- signedKME(expr_mat, module_eigengenes, outputColumnName = "kME_")
   hub_df <- data.frame(
     Gene_ID = colnames(expr_mat),
@@ -751,12 +754,14 @@ run_wgcna <- function(counts, meta, out_dir, label) {
 # Run: Males
 
 ```{r}
+
 wgcna_male <- run_wgcna(
   counts  = Counts_AB_Male,
   meta    = AHDB1_AB_Male,
   out_dir = CONFIG$out_dir_male,
   label   = "Male"
 )
+
 ```
 
 # Run: Females
@@ -770,133 +775,4 @@ wgcna_female <- run_wgcna(
 )
 ```
 
-# Module Eigengene DE via limma-voom
 
-# This section takes the same counts/metadata objects used above, but does NOT
-# reuse the net/module_eigengenes already computed in wgcna_male/wgcna_female —
-# it rebuilds the network from scratch inside this function, independently.
-#
-# Once module eigengenes are built, they are treated as a second "expression
-# matrix" and run through the full limma-voom pipeline (voom -> lmFit ->
-# contrasts.fit -> eBayes -> topTable), the same way individual genes are.
-# voom() assumes non-negative, count-like input, but eigengenes are PCA scores
-# centered near zero and routinely negative — so before voom will accept them,
-# every value in the eigengene matrix is shifted up by abs(min value) + 1.
-# This is purely a mechanical fix to satisfy voom's input assumption, not a
-# biologically meaningful transformation.
-
-```{r}
-library(limma)
-
-run_wgcna_eigengene_devoom <- function(counts, meta, out_dir, label) {
-
-  cat("\n========== Module Eigengene limma-voom DE:", label, "==========\n")
-
-  stopifnot(identical(rownames(meta), colnames(counts)))
-
-  ## --- Filter + vst (same steps as run_wgcna, rebuilt independently here) ---
-  keep <- rowSums(counts >= CONFIG$wgcna_min_count) >= CONFIG$wgcna_min_samples
-  counts_filt <- counts[keep, ]
-  cat("Genes after filtering:", nrow(counts_filt), "/", nrow(counts), "\n")
-
-  dds <- DESeqDataSetFromMatrix(
-    countData = counts_filt,
-    colData   = meta,
-    design    = ~ 1
-  )
-  vsd <- vst(dds, blind = TRUE)
-  expr_mat <- t(assay(vsd))
-
-  gsg <- goodSamplesGenes(expr_mat, verbose = 0)
-  if (!gsg$allOK) {
-    expr_mat <- expr_mat[gsg$goodSamples, gsg$goodGenes]
-  }
-
-  ## --- Network construction (rebuilt independently, not reused from wgcna_male/wgcna_female) ---
-  sft <- pickSoftThreshold(
-    expr_mat,
-    powerVector = CONFIG$wgcna_power_test_range,
-    networkType = CONFIG$wgcna_network_type,
-    verbose     = 0
-  )
-  chosen_power <- sft$powerEstimate
-  if (is.na(chosen_power)) chosen_power <- 6
-  cat("Chosen soft power:", chosen_power, "\n")
-
-  net <- blockwiseModules(
-    expr_mat,
-    power             = chosen_power,
-    networkType       = CONFIG$wgcna_network_type,
-    TOMType            = CONFIG$wgcna_network_type,
-    minModuleSize     = CONFIG$wgcna_min_module_size,
-    mergeCutHeight    = CONFIG$wgcna_merge_cut_height,
-    numericLabels     = TRUE,
-    pamRespectsDendro = FALSE,
-    saveTOMs          = FALSE,
-    verbose           = 0
-  )
-
-  module_eigengenes <- net$MEs
-  cat("Modules found:", ncol(module_eigengenes), "\n\n")
-
-  ## --- Shift eigengenes to non-negative (mechanical fix for voom, not biological) ---
-  min_value <- min(module_eigengenes)
-  shift_constant <- abs(min_value) + 1
-  shifted_MEs <- module_eigengenes + shift_constant
-  cat("Min eigengene value:", round(min_value, 3),
-      "| shift constant applied:", round(shift_constant, 3), "\n\n")
-
-  # voom expects features-in-rows, samples-in-columns
-  shifted_MEs_matrix <- t(shifted_MEs)
-  stopifnot(all(rownames(meta) %in% colnames(shifted_MEs_matrix)))
-  shifted_MEs_matrix <- shifted_MEs_matrix[, rownames(meta)]
-
-  ## --- Design matrix: Treatment (Control vs Heat) ---
-  meta$treatment <- droplevels(factor(meta$treatment))
-  design <- model.matrix(~ treatment, data = meta)
-  colnames(design)
-
-  ## --- voom -> lmFit -> contrasts.fit -> eBayes -> topTable ---
-  y   <- voom(shifted_MEs_matrix, design, plot = TRUE)
-  fit <- lmFit(y, design)
-  fit <- eBayes(fit, trend = TRUE)
-
-  # Second coefficient corresponds to the Heat-vs-Control contrast under this design
-  top_table <- topTable(fit, coef = 2, sort.by = "P", n = Inf)
-  top_table$Module <- rownames(top_table)
-
-  cat("Modules tested:", nrow(top_table), "\n")
-  cat("Significant modules (adj.P.Val < 0.05):",
-      sum(top_table$adj.P.Val < 0.05), "\n\n")
-
-  write.csv(
-    top_table,
-    file.path(out_dir, paste0(label, "_ME_limma_voom_HeatvControl.csv")),
-    row.names = FALSE
-  )
-
-  invisible(top_table)
-}
-```
-
-# Run: Males (Module Eigengene DE)
-
-```{r}
-ME_devoom_male <- run_wgcna_eigengene_devoom(
-  counts  = Counts_AB_Male,
-  meta    = AHDB1_AB_Male,
-  out_dir = CONFIG$out_dir_male,
-  label   = "Male"
-)
-```
-
-# Run: Females (Module Eigengene DE)
-
-```{r}
-ME_devoom_female <- run_wgcna_eigengene_devoom(
-  counts  = Counts_AB_Female,
-  meta    = AHDB1_AB_Female,
-  out_dir = CONFIG$out_dir_female,
-  label   = "Female"
-)
-```
