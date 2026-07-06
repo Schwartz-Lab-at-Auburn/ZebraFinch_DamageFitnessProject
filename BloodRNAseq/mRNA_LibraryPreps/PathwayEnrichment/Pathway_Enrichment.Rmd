@@ -12,6 +12,7 @@ output: html_document
 # 4. Run gseKEGG (organism = "tgu") for Male and Female separately
 # 5. Export KEGG GSEA results to CSV and produce dotplots (Up in Heat / Down in Heat)
 # 6. Run GO for Male and Females (Enrich_GO for Over-Representation and GO-GSEA)
+# 7. Rung molecular signatures database 
 
 # Clear Memory and Check working directory
 
@@ -32,6 +33,7 @@ library(ggplot2)
 library(patchwork)
 library(WGCNA)
 library(DESeq2)
+library(msigdbr)
 ```
 
 # CONFIG
@@ -42,6 +44,7 @@ CONFIG <- list(
   # Input CSVs exported from the DESeq2 chunk of 6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison
   male_csv    = "sig_male_blood_deseq.csv",
   female_csv  = "sig_female_blood_deseq.csv",
+  int_csv = "sig_int_blood_deseq.csv",
 
   # Ensembl BioMart
   biomart_dataset = "tguttata_gene_ensembl",
@@ -58,6 +61,7 @@ CONFIG <- list(
   go_max_gs     = 500,
   go_show_cat   = 10,   
 
+  
   # WGCNA 
 #  wgcna_raw_counts_csv    = "ZF_Liver_rawgene_count_matrix.csv",
 #  wgcna_pheno_txt         = "PHENO_DATA_Liver_Control_Heat.txt",
@@ -74,13 +78,15 @@ CONFIG <- list(
 
   # Output paths
   out_dir_male   = "Results/GSEA/DESeq2_Male",
-  out_dir_female = "Results/GSEA/DESeq2_Female"
+  out_dir_female = "Results/GSEA/DESeq2_Female",
+  out_dir_int = "Results/GSEA/DESeq2_Int"
 #  out_dir_wgcna_male   = "Results/WGCNA/Male",
 #  out_dir_wgcna_female = "Results/WGCNA/Female"
 )
 
 dir.create(CONFIG$out_dir_male,         recursive = TRUE, showWarnings = FALSE)
 dir.create(CONFIG$out_dir_female,       recursive = TRUE, showWarnings = FALSE)
+dir.create(CONFIG$out_dir_int,       recursive = TRUE, showWarnings = FALSE)
 #dir.create(CONFIG$out_dir_wgcna_male,   recursive = TRUE, showWarnings = FALSE)
 #dir.create(CONFIG$out_dir_wgcna_female, recursive = TRUE, showWarnings = FALSE)
 ```
@@ -90,12 +96,17 @@ dir.create(CONFIG$out_dir_female,       recursive = TRUE, showWarnings = FALSE)
 ```{r}
 DEG_male_deseq   <- read.csv(CONFIG$male_csv,   stringsAsFactors = FALSE)
 DEG_female_deseq <- read.csv(CONFIG$female_csv, stringsAsFactors = FALSE)
+DEG_int_deseq <- read.csv(CONFIG$int_csv, stringsAsFactors = FALSE)
+
 
 cat("Male DEG rows loaded:",   nrow(DEG_male_deseq),   "\n")
 cat("Female DEG rows loaded:", nrow(DEG_female_deseq), "\n\n")
+cat("Interaction DEG rows loaded:", nrow(DEG_int_deseq), "\n\n")
+
 
 stopifnot("log2FoldChange" %in% colnames(DEG_male_deseq))
 stopifnot("log2FoldChange" %in% colnames(DEG_female_deseq))
+stopifnot("log2FoldChange" %in% colnames(DEG_int_deseq))
 ```
 
 # Clean Gene IDs -> Symbol
@@ -105,11 +116,14 @@ stopifnot("log2FoldChange" %in% colnames(DEG_female_deseq))
 ```{r}
 DEG_male_deseq$Symbol   <- sub("\\|.*", "", sub("^gene-", "", DEG_male_deseq$Gene_ID))
 DEG_female_deseq$Symbol <- sub("\\|.*", "", sub("^gene-", "", DEG_female_deseq$Gene_ID))
+DEG_int_deseq$Symbol <- sub("\\|.*", "", sub("^gene-", "", DEG_int_deseq$Gene_ID))
 
 cat("Sample male symbols:\n")
 print(head(DEG_male_deseq$Symbol, 5))
 cat("\nSample female symbols:\n")
 print(head(DEG_female_deseq$Symbol, 5))
+cat("\nSample interaction symbols:\n")
+print(head(DEG_int_deseq$Symbol, 5))
 ```
 
 # BioMart: map Symbol -> Entrez
@@ -137,6 +151,8 @@ map_ZF <- getBM(
 ```{r}
 DEG_male_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_male_deseq$Symbol, map_ZF$external_gene_name)]
 DEG_female_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_female_deseq$Symbol, map_ZF$external_gene_name)]
+DEG_int_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_int_deseq$Symbol, map_ZF$external_gene_name)]
+
 
 cat("Male mapping results:\n")
 cat("  Total DEGs:", nrow(DEG_male_deseq), "\n")
@@ -147,6 +163,11 @@ cat("Female mapping results:\n")
 cat("  Total DEGs:", nrow(DEG_female_deseq), "\n")
 cat("  With Entrez IDs:", sum(!is.na(DEG_female_deseq$Entrez)), "\n")
 cat("  Success rate:", round(sum(!is.na(DEG_female_deseq$Entrez)) / nrow(DEG_female_deseq) * 100, 1), "%\n\n")
+
+cat("Interaction mapping results:\n")
+cat("  Total DEGs:", nrow(DEG_int_deseq), "\n")
+cat("  With Entrez IDs:", sum(!is.na(DEG_int_deseq$Entrez)), "\n")
+cat("  Success rate:", round(sum(!is.na(DEG_int_deseq$Entrez)) / nrow(DEG_int_deseq) * 100, 1), "%\n\n")
 ```
 
 # Build ranking metric: sign(log2FoldChange) * -log10(pvalue)
@@ -154,14 +175,17 @@ cat("  Success rate:", round(sum(!is.na(DEG_female_deseq$Entrez)) / nrow(DEG_fem
 ```{r}
 DEG_male_deseq$Rank   <- sign(DEG_male_deseq$log2FoldChange)   * -log10(DEG_male_deseq$pvalue)
 DEG_female_deseq$Rank <- sign(DEG_female_deseq$log2FoldChange) * -log10(DEG_female_deseq$pvalue)
+DEG_int_deseq$Rank <- sign(DEG_int_deseq$log2FoldChange) * -log10(DEG_int_deseq$pvalue)
 
 cat("Sample male ranks:\n")
 print(head(DEG_male_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
 cat("\nSample female ranks:\n")
 print(head(DEG_female_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
+cat("\nSample interaction ranks:\n")
+print(head(DEG_int_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
 ```
 
-### GSEA: Males ###
+### GSEA KEGG: Males ###
 
 ```{r}
 
@@ -213,7 +237,7 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
 }
 ```
 
-### GSEA: Females ###
+### GSEA KEGG: Females ###
 
 ```{r}
 
@@ -497,6 +521,160 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
 }
 
 ```
+
+### GSEA MSigDB - Females only
+
+```{r}
+library(dplyr)
+library(msigdbr)
+library(clusterProfiler)
+library(enrichplot)
+
+# Clean genes
+res_df <- as.data.frame(DEG_female_deseq)
+res_df$gene_symbol <- sub(".*\\|", "", res_df$Gene_ID)
+
+res_df <- res_df %>%
+  mutate(sign = ifelse(log2FoldChange > 0, "activated", "suppressed")) %>%
+  filter(!is.na(gene_symbol), gene_symbol != "")
+
+# Gene lists
+gene_list <- split(res_df$gene_symbol, res_df$sign)
+
+gene_list <- lapply(gene_list, function(x) unique(na.omit(x)))
+gene_list <- gene_list[lengths(gene_list) >= 10]
+
+# MSigDB Hallmark 
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+# CompareCluster 
+hallmark_cc <- compareCluster(
+  geneCluster = gene_list,
+  fun = "enricher",
+  TERM2GENE = hallmark_df,
+  pvalueCutoff = 0.05
+)
+
+# Check result
+print(hallmark_cc)
+
+# Plot
+dotplot(hallmark_cc, showCategory = 20)
+
+# Make sure Cluster labels are clean
+hallmark_cc@compareClusterResult$Cluster <- factor(
+  hallmark_cc@compareClusterResult$Cluster,
+  levels = c("activated", "suppressed"),
+  labels = c("Up in Heat", "Down in Heat")
+)
+
+# Plot
+p <- dotplot(
+  hallmark_cc,
+  showCategory = 10,      # adjust like your example
+  font.size = 12
+) +
+  scale_color_gradient(
+    low = "#2c7bb6",
+    high = "#d7191c"
+  ) +
+  scale_size(range = c(3, 8)) +
+  labs(
+    title = "Female DESeq2 MSigDB Enrichment",
+    x = "Gene Ratio",
+    y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    panel.grid.minor = element_blank()
+  )
+
+p
+```
+
+### GSEA MSigDB - Males only
+
+```{r}
+library(dplyr)
+library(msigdbr)
+library(clusterProfiler)
+library(enrichplot)
+
+# Clean genes
+res_df <- as.data.frame(DEG_male_deseq)
+res_df$gene_symbol <- sub(".*\\|", "", res_df$Gene_ID)
+
+res_df <- res_df %>%
+  mutate(sign = ifelse(log2FoldChange > 0, "activated", "suppressed")) %>%
+  filter(!is.na(gene_symbol), gene_symbol != "")
+
+# Gene lists
+gene_list <- split(res_df$gene_symbol, res_df$sign)
+
+gene_list <- lapply(gene_list, function(x) unique(na.omit(x)))
+gene_list <- gene_list[lengths(gene_list) >= 10]
+
+# MSigDB Hallmark 
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+# CompareCluster 
+hallmark_cc <- compareCluster(
+  geneCluster = gene_list,
+  fun = "enricher",
+  TERM2GENE = hallmark_df,
+  pvalueCutoff = 0.05
+)
+
+# Check result
+print(hallmark_cc)
+
+# Plot
+dotplot(hallmark_cc, showCategory = 20)
+
+# Make sure Cluster labels are clean
+hallmark_cc@compareClusterResult$Cluster <- factor(
+  hallmark_cc@compareClusterResult$Cluster,
+  levels = c("activated", "suppressed"),
+  labels = c("Up in Heat", "Down in Heat")
+)
+
+# Plot
+p <- dotplot(
+  hallmark_cc,
+  showCategory = 10,      # adjust like your example
+  font.size = 12
+) +
+  scale_color_gradient(
+    low = "#2c7bb6",
+    high = "#d7191c"
+  ) +
+  scale_size(range = c(3, 8)) +
+  labs(
+    title = "Male DESeq2 MSigDB Enrichment",
+    x = "Gene Ratio",
+    y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    panel.grid.minor = element_blank()
+  )
+
+p
+```
+
+
 
 # Load Data Files for WGCNA 
 
