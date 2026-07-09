@@ -323,7 +323,8 @@ v_female <- voom(dge_AB_Female_voom, design_female_voom, plot = TRUE)
 
 ```{r}
 library(DESeq2)
-
+#> packageVersion("DESeq2")
+#[1] ‘1.52.0’
 
 ## Males only
 
@@ -333,6 +334,10 @@ dds_male <- DESeqDataSetFromMatrix(
   colData   = AHDB1_AB_Male,
   design    = ~ 0 + treatment
 )
+
+keep_male_deseq <- rowSums(counts(dds_male)) >= 10
+dds_male <- dds_male[keep_male_deseq, ]
+cat("Genes after filtering:", nrow(dds_male), "\n\n")
 
 dds_male <- DESeq(dds_male)
 
@@ -671,13 +676,13 @@ dev.off()
 library(UpSetR)
 
 # Make characters - Run once & then not again
-sig_female_voom_up <- as.character(sig_female_voom_up$Gene_ID)
-sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
-sig_female_up_EdgeR <- as.character(sig_female_up_EdgeR$Gene_ID)
+#sig_female_voom_up <- as.character(sig_female_voom_up$Gene_ID)
+#sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
+#sig_female_up_EdgeR <- as.character(sig_female_up_EdgeR$Gene_ID)
 
-sig_female_voom_down <- as.character(sig_female_voom_down$Gene_ID)
-sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
-sig_female_down_EdgeR <- as.character(sig_female_down_EdgeR$Gene_ID)
+#sig_female_voom_down <- as.character(sig_female_voom_down$Gene_ID)
+#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+#sig_female_down_EdgeR <- as.character(sig_female_down_EdgeR$Gene_ID)
 
 # Build lists
 female_up_list <- list(
@@ -784,7 +789,7 @@ library(UpSetR)
 #sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
 
 #sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
-#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
 
 # Build lists
 up_list <- list(
