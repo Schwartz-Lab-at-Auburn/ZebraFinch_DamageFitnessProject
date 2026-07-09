@@ -562,6 +562,10 @@ hallmark_cc <- compareCluster(
 # Check result
 print(hallmark_cc)
 
+# Save as csv
+  write.csv( hallmark_cc , "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/PathwayEnrichment/Results/GSEA/DESeq2_Female/GSEA_MSigDB_Female.csv",
+    row.names = FALSE)
+
 # Plot
 dotplot(hallmark_cc, showCategory = 20)
 
@@ -637,6 +641,11 @@ hallmark_cc <- compareCluster(
 
 # Check result
 print(hallmark_cc)
+
+# Save as csv
+  write.csv( hallmark_cc , "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/PathwayEnrichment/Results/GSEA/DESeq2_Male/GSEA_MSigDB_Male.csv",
+    row.names = FALSE)
+
 
 # Plot
 dotplot(hallmark_cc, showCategory = 20)
