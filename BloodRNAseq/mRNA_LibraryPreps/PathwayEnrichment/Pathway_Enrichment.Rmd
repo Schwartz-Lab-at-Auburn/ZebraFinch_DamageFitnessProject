@@ -210,11 +210,11 @@ gseKEGG_male <- gseKEGG(
 if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
   cat("  \u2713 Found", nrow(gseKEGG_male@result), "pathways\n\n")
 
-#  write.csv(
-#    gseKEGG_male@result,
-#    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.csv"),
-#    row.names = FALSE
-#  )
+  write.csv(
+    gseKEGG_male@result,
+    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.csv"),
+    row.names = FALSE
+  )
 
   p_male <- dotplot(
     gseKEGG_male,
@@ -227,10 +227,10 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
       labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
     )
 
-# ggsave(
-#    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
-#    p_male, width = 14, height = 10, dpi = 300
-#  )
+ ggsave(
+    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
+    p_male, width = 14, height = 10, dpi = 300
+  )
   print(p_male)
 } else {
   cat("  No significant pathways found for Males.\n\n")
@@ -262,11 +262,11 @@ gseKEGG_female <- gseKEGG(
 if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
   cat("  \u2713 Found", nrow(gseKEGG_female@result), "pathways\n\n")
 
-#  write.csv(
-#    gseKEGG_female@result,
-#    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.csv"),
-#    row.names = FALSE
-#  )
+  write.csv(
+    gseKEGG_female@result,
+    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.csv"),
+    row.names = FALSE
+  )
 
   p_female <- dotplot(
     gseKEGG_female,
@@ -279,10 +279,10 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
       labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
     )
 
-#  ggsave(
-#    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
-#    p_female, width = 14, height = 10, dpi = 300
-#  )
+  ggsave(
+    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
+    p_female, width = 14, height = 10, dpi = 300
+  )
   print(p_female)
 } else {
   cat("  No significant pathways found for Females.\n\n")
