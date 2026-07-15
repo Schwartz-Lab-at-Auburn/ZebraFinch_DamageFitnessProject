@@ -439,6 +439,60 @@ write.csv(DEG_female_deseq, "DEG_female_deseq_allgenes.csv", row.names = FALSE)
 write.csv(sig_female_deseq, "sig_female_deseq_0.1.csv", row.names = FALSE)
 write.csv(sig_female_deseq_up, "sig_female_deseq_up_0.1.csv", row.names = FALSE)
 write.csv(sig_female_deseq_down, "sig_female_deseq_down_0.1.csv", row.names = FALSE)
+
+## Interaction - treatment:Sex
+
+# Build DESeq2 object
+dds_interaction <- DESeqDataSetFromMatrix(
+  countData = Raw_Counts_AB,
+  colData   = ZF_Liver_sample_list,
+  design    = ~ 0 + treatment + sex + treatment:sex
+)
+
+dds_interaction <- DESeq(dds_interaction)
+
+res_interaction <- results(
+    dds_interaction,
+    name = "treatmentHeat.sexmale"
+)
+
+summary(res_interaction)
+
+DEG_int_deseq <- as.data.frame(res_interaction)
+DEG_int_deseq$Gene_ID <- rownames(DEG_int_deseq)
+
+# Remove NA's
+DEG_int_deseq <- DEG_int_deseq[
+  !is.na(DEG_int_deseq$padj) & !is.na(DEG_int_deseq$log2FoldChange),
+]
+cat("Genes after NA removal:", nrow(DEG_int_deseq), "\n\n")
+
+# For GSEA and RRHO2 input
+write.csv(DEG_int_deseq, "DEG_int_deseq.csv", row.names = FALSE)
+
+# Subset DEG"s into upregulated and downregulated 
+sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
+sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 0, ]
+sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < 0, ]
+
+write.csv(sig_int_deseq, "sig_int_liver_deseq.csv", row.names = FALSE)
+write.csv(sig_int_deseq_up, "sig_int_deseq_liver_up.csv", row.names = FALSE)
+write.csv(sig_int_deseq_down, "sig_int_deseq_liver_down.csv", row.names = FALSE)
+
+cat("Interaction DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_int_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_int_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_int_deseq_down), "\n\n")
+
+stringent_sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.05, ]
+stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 0, ]
+stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < 0, ]
+
+cat("Interaction DEG Results 0.05 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_int_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_int_deseq_down), "\n\n")
+
 ```
 
 ### DGE with Edge R ###
