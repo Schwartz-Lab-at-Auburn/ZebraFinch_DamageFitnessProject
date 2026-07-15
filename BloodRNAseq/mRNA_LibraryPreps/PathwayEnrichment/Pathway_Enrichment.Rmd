@@ -42,9 +42,10 @@ library(msigdbr)
 
 CONFIG <- list(
   # Input CSVs exported from the DESeq2 chunk of 6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison
-  male_csv    = "sig_male_blood_deseq.csv",
-  female_csv  = "sig_female_blood_deseq.csv",
-  int_csv = "sig_int_blood_deseq.csv",
+  # After filtering out NAs, before determining significance
+  male_csv    = "DEG_male_deseq.csv",
+  female_csv  = "DEG_female_deseq.csv",
+  int_csv = "DEG_int_deseq.csv",
 
   # Ensembl BioMart
   biomart_dataset = "tguttata_gene_ensembl",
@@ -289,6 +290,59 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
 }
 ```
 
+### GSEA KEGG: Interaction ###
+
+```{r}
+
+cat("GSEA: Interaction \n")
+
+gene_list_int <- DEG_int_deseq %>%
+  filter(!is.na(Entrez)) %>%
+  arrange(desc(Rank)) %>%
+  { setNames(.$Rank, as.character(.$Entrez)) } %>%
+  .[!duplicated(names(.))]
+
+gene_list_int <- sort(gene_list_int, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_int), "\n\n")
+
+gseKEGG_int <- gseKEGG(
+  gene_list_int,
+  organism     = CONFIG$kegg_organism,
+  pvalueCutoff = CONFIG$pvalue_cutoff,
+  verbose      = FALSE
+)
+
+if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
+  cat("  \u2713 Found", nrow(gseKEGG_int@result), "pathways\n\n")
+
+  write.csv(
+    gseKEGG_int@result,
+    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.csv"),
+    row.names = FALSE
+  )
+
+  p_int <- dotplot(
+    gseKEGG_int,
+    showCategory = 20,
+    split = ".sign",
+    title = "Interaction DESeq2 GSEA KEGG"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
+    )
+
+  ggsave(
+    file.path(CONFIG$out_dir_int, "GSE_KEGG_Interaction.png"),
+    p_int, width = 14, height = 10, dpi = 300
+  )
+  print(p_int)
+} else {
+  cat("  No significant pathways found for Interaction\n\n")
+}
+```
+
+
 # AnnotationHub: fetch the NCBI-built OrgDb for Taeniopygia guttata
 
 ```{r}
@@ -413,6 +467,35 @@ if (length(go_female$plots) > 0) {
   print(combined_go_female)
 } else {
   cat("  No GO plots to combine for Females.\n\n")
+}
+
+```
+### GO GSEA: Interaction (BP + MF + CC, combined) ###
+
+```{r}
+
+gene_list_int_symbol <- DEG_int_deseq %>%
+  filter(!is.na(Symbol), Symbol != "") %>%
+  arrange(desc(Rank)) %>%
+  { setNames(.$Rank, .$Symbol) } %>%
+  .[!duplicated(names(.))]
+
+gene_list_int_symbol <- sort(gene_list_int_symbol, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_int_symbol), "\n\n")
+
+go_int <- run_go_gsea_sex(gene_list_int_symbol, CONFIG$out_dir_int, "Interaction")
+
+if (length(go_int$plots) > 0) {
+  combined_go_int <- wrap_plots(go_int$plots, ncol = 1) +
+    plot_annotation(title = "Interaction DESeq2 GO GSEA — BP / MF / CC")
+
+  ggsave(
+    file.path(CONFIG$out_dir_int, "GO_GSEA_Interaction_combined.png"),
+    combined_go_int, width = 14, height = 8 * length(go_int$plots), dpi = 300
+  )
+  print(combined_go_int)
+} else {
+  cat("  No GO plots to combine for Interaction.\n\n")
 }
 
 ```
@@ -683,8 +766,88 @@ p <- dotplot(
 p
 ```
 
+### GSEA MSigDB - Interaction 
+
+```{r}
+library(dplyr)
+library(msigdbr)
+library(clusterProfiler)
+library(enrichplot)
+
+# Clean genes
+res_df <- as.data.frame(DEG_int_deseq)
+res_df$gene_symbol <- sub(".*\\|", "", res_df$Gene_ID)
+
+res_df <- res_df %>%
+  mutate(sign = ifelse(log2FoldChange > 0, "activated", "suppressed")) %>%
+  filter(!is.na(gene_symbol), gene_symbol != "")
+
+# Gene lists
+gene_list <- split(res_df$gene_symbol, res_df$sign)
+
+gene_list <- lapply(gene_list, function(x) unique(na.omit(x)))
+gene_list <- gene_list[lengths(gene_list) >= 10]
+
+# MSigDB Hallmark 
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+# CompareCluster 
+hallmark_cc <- compareCluster(
+  geneCluster = gene_list,
+  fun = "enricher",
+  TERM2GENE = hallmark_df,
+  pvalueCutoff = 0.05
+)
+
+# Check result
+print(hallmark_cc)
+
+# Save as csv
+  write.csv( hallmark_cc , "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/PathwayEnrichment/Results/GSEA/DESeq2_Int/GSEA_MSigDB_Interaction.csv",
+    row.names = FALSE)
 
 
+# Plot
+dotplot(hallmark_cc, showCategory = 20)
+
+# Make sure Cluster labels are clean
+hallmark_cc@compareClusterResult$Cluster <- factor(
+  hallmark_cc@compareClusterResult$Cluster,
+  levels = c("activated", "suppressed"),
+  labels = c("Up in Heat", "Down in Heat")
+)
+
+# Plot
+p <- dotplot(
+  hallmark_cc,
+  showCategory = 10,      # adjust like your example
+  font.size = 12
+) +
+  scale_color_gradient(
+    low = "#2c7bb6",
+    high = "#d7191c"
+  ) +
+  scale_size(range = c(3, 8)) +
+  labs(
+    title = "Interaction DESeq2 MSigDB Enrichment",
+    x = "Gene Ratio",
+    y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    panel.grid.minor = element_blank()
+  )
+
+p
+```
+
+# NOT CURRENTLY USING
 # Load Data Files for WGCNA 
 
 # Built from the raw count matrix + Control/Heat pheno file, subset to Treatment A & B (Control/Heat) and split by sex. CORT is pulled in separately from the master spreadsheet, joined by bird ID extracted from the sample column names.

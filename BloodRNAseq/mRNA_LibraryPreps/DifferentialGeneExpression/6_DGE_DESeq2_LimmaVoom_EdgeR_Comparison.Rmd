@@ -358,6 +358,9 @@ DEG_male_deseq <- DEG_male_deseq[
 ]
 cat("Genes after NA removal:", nrow(DEG_male_deseq), "\n\n")
 
+# For GSEA and RRHO2 input
+write.csv(DEG_male_deseq, "DEG_male_deseq.csv", row.names = FALSE)
+
 # Subset DEG"s into upregulated and downregulated 
 sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.1, ]
 sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 0, ]
@@ -414,6 +417,9 @@ DEG_female_deseq <- DEG_female_deseq[
 ]
 cat("Genes after NA removal:", nrow(DEG_female_deseq), "\n\n")
 
+# For GSEA and RRHO2 input
+write.csv(DEG_female_deseq, "DEG_female_deseq.csv", row.names = FALSE)
+
 # Subset DEG's into upregulated and downregulated
 sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.1, ]
 sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 0, ]
@@ -464,6 +470,9 @@ DEG_int_deseq <- DEG_int_deseq[
   !is.na(DEG_int_deseq$padj) & !is.na(DEG_int_deseq$log2FoldChange),
 ]
 cat("Genes after NA removal:", nrow(DEG_int_deseq), "\n\n")
+
+# For GSEA and RRHO2 input
+write.csv(DEG_int_deseq, "DEG_int_deseq.csv", row.names = FALSE)
 
 # Subset DEG"s into upregulated and downregulated 
 sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
