@@ -115,6 +115,7 @@ print(head(DEG_female_deseq$Symbol, 5))
 # BioMart: map Symbol -> Entrez
 
 ```{r}
+ 
 mart_finch <- useEnsembl(
   biomart = "ensembl",
   dataset = CONFIG$biomart_dataset,
@@ -135,6 +136,7 @@ map_ZF <- getBM(
 # Map Entrez onto each sex's DEG table
 
 ```{r}
+
 DEG_male_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_male_deseq$Symbol, map_ZF$external_gene_name)]
 DEG_female_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_female_deseq$Symbol, map_ZF$external_gene_name)]
 
@@ -159,7 +161,9 @@ cat("Sample male ranks:\n")
 print(head(DEG_male_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
 cat("\nSample female ranks:\n")
 print(head(DEG_female_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
+
 ```
+
 
 ### GSEA: Males ###
 
