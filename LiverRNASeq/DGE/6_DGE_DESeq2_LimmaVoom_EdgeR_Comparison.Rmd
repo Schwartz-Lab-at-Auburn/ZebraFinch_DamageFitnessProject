@@ -11,6 +11,21 @@ output: md_document
 # 3. Run DGE with edgeR, limma and DESeq2 (Males Only & Females Only)
 # 4. Run Pathway Enrichment & WGCNA
 
+#### Clear Memory, Check Directory & Load Libraries
+```{r}
+
+# Clear memory
+rm(list=ls(all = TRUE))
+
+# Check working directory 
+getwd()
+
+library(edgeR)
+library(DESeq2)
+library(limma)
+
+```
+
 #### Input the count data, the gene(/transcript) count matrix and labels
 
 ```{r}
@@ -69,6 +84,7 @@ ZF_Liver_sample_list$treatment <- relevel(factor(ZF_Liver_sample_list$treatment)
 
 # Construct DGEList object
 ```{r}
+
 DGE_AB <- DGEList(
   counts  = Raw_Counts_AB,
   samples = ZF_Liver_sample_list
@@ -130,8 +146,6 @@ boxplot(
 ### DGE with limma-voom ###
 
 ```{r}
-
-library(limma)
 
 ### Males only
 
@@ -312,9 +326,6 @@ v_female <- voom(dge_AB_Female_voom, design_female_voom, plot = TRUE)
 ### DGE with DESeq2 ###
 
 ```{r}
-library(DESeq2)
-
-
 ## Males only
 
 # Build DESeq2 object
@@ -323,6 +334,10 @@ dds_male <- DESeqDataSetFromMatrix(
   colData   = AHDB1_AB_Male,
   design    = ~ 0 + treatment
 )
+
+keep_male_deseq <- rowSums(counts(dds_male)) >= 10
+dds_male <- dds_male[keep_male_deseq, ]
+cat("Genes after filtering:", nrow(dds_male), "\n\n")
 
 dds_male <- DESeq(dds_male)
 
@@ -362,6 +377,11 @@ cat("Total significant DEGs:", nrow(stringent_sig_male_deseq), "\n")
 cat("Upregulated in Heat:", nrow(stringent_sig_male_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(stringent_sig_male_deseq_down), "\n\n")
 
+## Export DEGs to CSV — Males
+write.csv(DEG_male_deseq, "DEG_male_deseq_all.csv", row.names = FALSE)
+write.csv(sig_male_deseq, "sig_male_deseq_0.1.csv", row.names = FALSE)
+write.csv(sig_male_deseq_up, "sig_male_deseq_up_0.1.csv", row.names = FALSE)
+write.csv(sig_male_deseq_down, "sig_male_deseq_down_0.1.csv", row.names = FALSE)
 
 ## Females only
 
@@ -414,13 +434,17 @@ cat("Total significant DEGs:", nrow(stringent_sig_female_deseq), "\n")
 cat("Upregulated in Heat:", nrow(stringent_sig_female_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(stringent_sig_female_deseq_down), "\n\n")
 
+## Export DEGs to CSV — Females
+write.csv(DEG_female_deseq, "DEG_female_deseq_all.csv", row.names = FALSE)
+write.csv(sig_female_deseq, "sig_female_deseq_0.1.csv", row.names = FALSE)
+write.csv(sig_female_deseq_up, "sig_female_deseq_up_0.1.csv", row.names = FALSE)
+write.csv(sig_female_deseq_down, "sig_female_deseq_down_0.1.csv", row.names = FALSE)
 ```
 
 ### DGE with Edge R ###
 
 
 ```{r}
-library(edgeR)
 
 # Males only
 dim(AHDB1_AB_Male)
