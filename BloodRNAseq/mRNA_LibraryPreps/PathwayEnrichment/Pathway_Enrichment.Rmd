@@ -317,7 +317,7 @@ if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
 
   write.csv(
     gseKEGG_int@result,
-    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.csv"),
+    file.path(CONFIG$out_dir_int, "GSEA_KEGG_Interaction.csv"),
     row.names = FALSE
   )
 
@@ -329,11 +329,11 @@ if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
   ) +
     facet_grid(
       . ~ .sign,
-      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
+      labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
     )
 
   ggsave(
-    file.path(CONFIG$out_dir_int, "GSE_KEGG_Interaction.png"),
+    file.path(CONFIG$out_dir_int, "GSEA_KEGG_Interaction.png"),
     p_int, width = 14, height = 10, dpi = 300
   )
   print(p_int)
@@ -362,7 +362,7 @@ print(keytypes(orgdb_ZF))
 # with patchwork, and exports the combined figure
 
 ```{r}
-
+# For male and female
 run_go_gsea_sex <- function(gene_list, out_dir, label) {
 
   plots       <- list()
@@ -402,6 +402,55 @@ run_go_gsea_sex <- function(gene_list, out_dir, label) {
         facet_grid(
           . ~ .sign,
           labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
+        )
+    } else {
+      cat("  No significant", ont, "terms found for", label, ".\n\n")
+    }
+  }
+
+  invisible(list(results = results_all, plots = plots))
+}
+
+# For interaction
+run_go_gsea_int <- function(gene_list, out_dir, label) {
+
+  plots       <- list()
+  results_all <- list()
+
+  for (ont in CONFIG$go_ontologies) {
+    cat("=== GO GSEA:", label, "-", ont, "===\n")
+
+    go_res <- gseGO(
+      gene_list,
+      OrgDb        = orgdb_ZF,
+      keyType      = CONFIG$go_key_type,
+      ont          = ont,
+      minGSSize    = CONFIG$go_min_gs,
+      maxGSSize    = CONFIG$go_max_gs,
+      pvalueCutoff = CONFIG$pvalue_cutoff,
+      verbose      = FALSE
+    )
+
+    results_all[[ont]] <- go_res
+
+    if (!is.null(go_res) && nrow(go_res@result) > 0) {
+      cat("  \u2713 Found", nrow(go_res@result), ont, "terms\n\n")
+
+      write.csv(
+        go_res@result,
+        file.path(out_dir, paste0("GO_GSEA_", label, "_", ont, ".csv")),
+        row.names = FALSE
+      )
+
+      plots[[ont]] <- dotplot(
+        go_res,
+        showCategory = CONFIG$go_show_cat,
+        split = ".sign",
+        title = paste0(label, " - ", ont)
+      ) +
+        facet_grid(
+          . ~ .sign,
+          labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
         )
     } else {
       cat("  No significant", ont, "terms found for", label, ".\n\n")
@@ -483,7 +532,7 @@ gene_list_int_symbol <- DEG_int_deseq %>%
 gene_list_int_symbol <- sort(gene_list_int_symbol, decreasing = TRUE)
 cat("  Ranked genes:", length(gene_list_int_symbol), "\n\n")
 
-go_int <- run_go_gsea_sex(gene_list_int_symbol, CONFIG$out_dir_int, "Interaction")
+go_int <- run_go_gsea_int(gene_list_int_symbol, CONFIG$out_dir_int, "Interaction")
 
 if (length(go_int$plots) > 0) {
   combined_go_int <- wrap_plots(go_int$plots, ncol = 1) +
@@ -724,7 +773,7 @@ dotplot(hallmark_cc, showCategory = 20)
 hallmark_cc@compareClusterResult$Cluster <- factor(
   hallmark_cc@compareClusterResult$Cluster,
   levels = c("activated", "suppressed"),
-  labels = c("Up in Heat", "Down in Heat")
+  labels = c("Up", "Down")
 )
 
 # Plot
