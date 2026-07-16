@@ -1,0 +1,2 @@
+"ID","Description","setSize","enrichmentScore","NES","pvalue","p.adjust","qvalue","rank","leading_edge","core_enrichment"
+"GO:0070411","I-SMAD binding",14,-0.953851112685994,-2.1281865452497,4.93205306028491e-05,0.0347709740750086,0.0334860444619344,32,"tags=21%, list=0%, signal=21%","SMAD6/LOC116806878/LOC116806871"

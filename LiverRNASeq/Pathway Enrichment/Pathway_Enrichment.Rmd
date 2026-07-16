@@ -19,6 +19,7 @@ output: html_document
 
 rm(list = ls(all = TRUE))
 getwd()
+
 ```
 
 # Load packages
@@ -32,6 +33,8 @@ library(ggplot2)
 library(patchwork)
 library(WGCNA)
 library(DESeq2)
+library(msigdbr)
+library(enrichplot)
 ```
 
 # CONFIG
@@ -42,6 +45,7 @@ CONFIG <- list(
   # Input CSVs exported from the DESeq2 chunk of 6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison
   male_csv    = "DEG_male_deseq_allgenes.csv",
   female_csv  = "DEG_female_deseq_allgenes.csv",
+  int_csv     = "DEG_int_deseq.csv",
 
   # Ensembl BioMart
   biomart_dataset = "tguttata_gene_ensembl",
@@ -75,14 +79,17 @@ CONFIG <- list(
   # Output paths
   out_dir_male   = "Results/GSEA/DESeq2_Male",
   out_dir_female = "Results/GSEA/DESeq2_Female",
+  out_dir_int = "Results/GSEA/DESeq2_Interaction",
   out_dir_wgcna_male   = "Results/WGCNA/Male",
   out_dir_wgcna_female = "Results/WGCNA/Female"
 )
 
-dir.create(CONFIG$out_dir_male,         recursive = TRUE, showWarnings = FALSE)
-dir.create(CONFIG$out_dir_female,       recursive = TRUE, showWarnings = FALSE)
-dir.create(CONFIG$out_dir_wgcna_male,   recursive = TRUE, showWarnings = FALSE)
-dir.create(CONFIG$out_dir_wgcna_female, recursive = TRUE, showWarnings = FALSE)
+# Create once and then hashtag out
+# dir.create(CONFIG$out_dir_male,         recursive = TRUE, showWarnings = FALSE)
+# dir.create(CONFIG$out_dir_female,       recursive = TRUE, showWarnings = FALSE)
+# dir.create(CONFIG$out_dir_int,          recursive = TRUE, showWarnings = FALSE)
+# dir.create(CONFIG$out_dir_wgcna_male,   recursive = TRUE, showWarnings = FALSE)
+# dir.create(CONFIG$out_dir_wgcna_female, recursive = TRUE, showWarnings = FALSE)
 ```
 
 # Load exported DESeq2 DEG CSVs
@@ -90,12 +97,16 @@ dir.create(CONFIG$out_dir_wgcna_female, recursive = TRUE, showWarnings = FALSE)
 ```{r}
 DEG_male_deseq   <- read.csv(CONFIG$male_csv,   stringsAsFactors = FALSE)
 DEG_female_deseq <- read.csv(CONFIG$female_csv, stringsAsFactors = FALSE)
+DEG_int_deseq <- read.csv(CONFIG$int_csv, stringsAsFactors = FALSE)
+
 
 cat("Male DEG rows loaded:",   nrow(DEG_male_deseq),   "\n")
-cat("Female DEG rows loaded:", nrow(DEG_female_deseq), "\n\n")
+cat("Female DEG rows loaded:", nrow(DEG_female_deseq), "\n")
+cat("Interaction DEG rows loaded", nrow(DEG_int_deseq), "\n")
 
 stopifnot("log2FoldChange" %in% colnames(DEG_male_deseq))
 stopifnot("log2FoldChange" %in% colnames(DEG_female_deseq))
+stopifnot("log2FoldChange" %in% colnames(DEG_int_deseq))
 ```
 
 # Clean Gene IDs -> Symbol
@@ -105,11 +116,14 @@ stopifnot("log2FoldChange" %in% colnames(DEG_female_deseq))
 ```{r}
 DEG_male_deseq$Symbol   <- sub("\\|.*", "", sub("^gene-", "", DEG_male_deseq$Gene_ID))
 DEG_female_deseq$Symbol <- sub("\\|.*", "", sub("^gene-", "", DEG_female_deseq$Gene_ID))
+DEG_int_deseq$Symbol    <- sub("\\|.*", "", sub("^gene-", "", DEG_int_deseq$Gene_ID))
 
-cat("Sample male symbols:\n")
+cat("Sample male symbols:")
 print(head(DEG_male_deseq$Symbol, 5))
-cat("\nSample female symbols:\n")
+cat("Sample female symbols:")
 print(head(DEG_female_deseq$Symbol, 5))
+cat("Sample interaction symbols:")
+print(head(DEG_int_deseq$Symbol, 5))
 ```
 
 # BioMart: map Symbol -> Entrez
@@ -122,8 +136,8 @@ mart_finch <- useEnsembl(
   version = CONFIG$biomart_version
 )
 
-all_symbols <- unique(c(DEG_male_deseq$Symbol, DEG_female_deseq$Symbol))
-cat("Unique symbols to map (male + female together):", length(all_symbols), "\n\n")
+all_symbols <- unique(c(DEG_male_deseq$Symbol, DEG_female_deseq$Symbol, DEG_int_deseq$Symbol))
+cat("Unique symbols to map (male + female + interaction together):", length(all_symbols), "\n\n")
 
 map_ZF <- getBM(
   attributes = c("external_gene_name", "entrezgene_id"),
@@ -131,14 +145,16 @@ map_ZF <- getBM(
   values     = all_symbols,
   mart       = mart_finch
 )
+
 ```
 
-# Map Entrez onto each sex's DEG table
+# Map Entrez onto each sexes and the interaction's DEG table
 
 ```{r}
 
-DEG_male_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_male_deseq$Symbol, map_ZF$external_gene_name)]
+DEG_male_deseq$Entrez   <- map_ZF$entrezgene_id[match(DEG_male_deseq$Symbol, map_ZF$external_gene_name)]
 DEG_female_deseq$Entrez <- map_ZF$entrezgene_id[match(DEG_female_deseq$Symbol, map_ZF$external_gene_name)]
+DEG_int_deseq$Entrez    <- map_ZF$entrezgene_id[match(DEG_int_deseq$Symbol, map_ZF$external_gene_name)]
 
 cat("Male mapping results:\n")
 cat("  Total DEGs:", nrow(DEG_male_deseq), "\n")
@@ -149,18 +165,28 @@ cat("Female mapping results:\n")
 cat("  Total DEGs:", nrow(DEG_female_deseq), "\n")
 cat("  With Entrez IDs:", sum(!is.na(DEG_female_deseq$Entrez)), "\n")
 cat("  Success rate:", round(sum(!is.na(DEG_female_deseq$Entrez)) / nrow(DEG_female_deseq) * 100, 1), "%\n\n")
+
+cat("Interaction mapping results:\n")
+cat("  Total DEGs:", nrow(DEG_int_deseq), "\n")
+cat("  With Entrez IDs:", sum(!is.na(DEG_int_deseq$Entrez)), "\n")
+cat("  Success rate:", round(sum(!is.na(DEG_int_deseq$Entrez)) / nrow(DEG_int_deseq) * 100, 1), "%\n\n")
+
 ```
 
 # Build ranking metric: sign(log2FoldChange) * -log10(pvalue)
 
 ```{r}
+
 DEG_male_deseq$Rank   <- sign(DEG_male_deseq$log2FoldChange)   * -log10(DEG_male_deseq$pvalue)
 DEG_female_deseq$Rank <- sign(DEG_female_deseq$log2FoldChange) * -log10(DEG_female_deseq$pvalue)
+DEG_int_deseq$Rank    <- sign(DEG_int_deseq$log2FoldChange)    * -log10(DEG_int_deseq$pvalue)
 
 cat("Sample male ranks:\n")
 print(head(DEG_male_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
 cat("\nSample female ranks:\n")
 print(head(DEG_female_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
+cat("\nSample interaction ranks:\n")
+print(head(DEG_int_deseq[, c("Symbol", "log2FoldChange", "pvalue", "Rank")]))
 
 ```
 
@@ -215,6 +241,7 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
 } else {
   cat("  No significant pathways found for Males.\n\n")
 }
+
 ```
 
 ### GSEA: Females ###
@@ -266,6 +293,58 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
   print(p_female)
 } else {
   cat("  No significant pathways found for Females.\n\n")
+}
+```
+
+### GSEA: Interaction ###
+
+```{r}
+
+cat(" GSEA: Interaction \n")
+
+gene_list_int <- DEG_int_deseq %>%
+  filter(!is.na(Entrez)) %>%
+  arrange(desc(Rank)) %>%
+  { setNames(.$Rank, as.character(.$Entrez)) } %>%
+  .[!duplicated(names(.))]
+
+gene_list_int <- sort(gene_list_int, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_int), "\n\n")
+
+gseKEGG_int <- gseKEGG(
+  gene_list_int,
+  organism     = CONFIG$kegg_organism,
+  pvalueCutoff = CONFIG$pvalue_cutoff,
+  verbose      = FALSE
+)
+
+if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
+  cat("  \u2713 Found", nrow(gseKEGG_int@result), "pathways\n\n")
+
+  write.csv(
+    gseKEGG_int@result,
+    file.path(CONFIG$out_dir_int, "GSE_KEGG_Interaction.csv"),
+    row.names = FALSE
+  )
+
+  p_int <- dotplot(
+    gseKEGG_int,
+    showCategory = 20,
+    split = ".sign",
+    title = "Interaction DESeq2 GSEA KEGG"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Stronger in Males", suppressed = "Stronger in Females"))
+    )
+
+  ggsave(
+    file.path(CONFIG$out_dir_int, "GSE_KEGG_Interaction.png"),
+    p_int, width = 14, height = 10, dpi = 300
+  )
+  print(p_int)
+} else {
+  cat("  No significant pathways found for Interaction.\n\n")
 }
 ```
 
@@ -396,111 +475,259 @@ if (length(go_female$plots) > 0) {
 }
 
 ```
-
-### GSEA_KEGG: Males ###
-
+### GO GSEA: Interaction 
 ```{r}
 
-cat(" GSEA: Males \n")
-
-gene_list_male <- DEG_male_deseq %>%
-  filter(!is.na(Entrez)) %>%
+gene_list_int_symbol <- DEG_int_deseq %>%
+  filter(!is.na(Symbol), Symbol != "") %>%
   arrange(desc(Rank)) %>%
-  { setNames(.$Rank, as.character(.$Entrez)) } %>%
+  { setNames(.$Rank, .$Symbol) } %>%
   .[!duplicated(names(.))]
 
-gene_list_male <- sort(gene_list_male, decreasing = TRUE)
-cat("  Ranked genes:", length(gene_list_male), "\n\n")
+gene_list_int_symbol <- sort(gene_list_int_symbol, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_int_symbol), "\n\n")
 
-gseKEGG_male <- gseKEGG(
-  gene_list_male,
-  organism     = CONFIG$kegg_organism,
-  pvalueCutoff = CONFIG$pvalue_cutoff,
-  verbose      = FALSE
-)
+go_int <- run_go_gsea_sex(gene_list_int_symbol, CONFIG$out_dir_int, "Interaction")
 
-if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
-  cat("  \u2713 Found", nrow(gseKEGG_male@result), "pathways\n\n")
-
-  write.csv(
-    gseKEGG_male@result,
-    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.csv"),
-    row.names = FALSE
-  )
-
-  p_male <- dotplot(
-    gseKEGG_male,
-    showCategory = 20,
-    split = ".sign",
-    title = "Male DESeq2 GSEA KEGG"
-  ) +
-    facet_grid(
-      . ~ .sign,
-      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
+if (length(go_int$plots) > 0) {
+  combined_go_int <- wrap_plots(go_int$plots, ncol = 1) +
+    plot_annotation(title = "Interaction DESeq2 GO GSEA — BP / MF / CC")
 
   ggsave(
-    file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
-    p_male, width = 14, height = 10, dpi = 300
+    file.path(CONFIG$out_dir_int, "GO_GSEA_Interaction_combined.png"),
+    combined_go_int, width = 14, height = 8 * length(go_int$plots), dpi = 300
   )
-  print(p_male)
+  print(combined_go_int)
 } else {
-  cat("  No significant pathways found for Males.\n\n")
+  cat("  No GO plots to combine for Interaction.\n\n")
 }
 ```
 
-### GSEA_KEGG: Females ###
+
+# Molecular Signatures Database
+
+### GSEA MSigDB - Females only
 
 ```{r}
 
-cat("GSEA: Females \n")
+# Clean genes
+res_df <- as.data.frame(DEG_female_deseq)
+res_df$gene_symbol <- sub(".*\\|", "", res_df$Gene_ID)
 
-gene_list_female <- DEG_female_deseq %>%
-  filter(!is.na(Entrez)) %>%
-  arrange(desc(Rank)) %>%
-  { setNames(.$Rank, as.character(.$Entrez)) } %>%
-  .[!duplicated(names(.))]
+res_df <- res_df %>%
+  mutate(sign = ifelse(log2FoldChange > 0, "activated", "suppressed")) %>%
+  filter(!is.na(gene_symbol), gene_symbol != "")
 
-gene_list_female <- sort(gene_list_female, decreasing = TRUE)
-cat("  Ranked genes:", length(gene_list_female), "\n\n")
+# Gene lists
+gene_list <- split(res_df$gene_symbol, res_df$sign)
 
-gseKEGG_female <- gseKEGG(
-  gene_list_female,
-  organism     = CONFIG$kegg_organism,
-  pvalueCutoff = CONFIG$pvalue_cutoff,
-  verbose      = FALSE
+gene_list <- lapply(gene_list, function(x) unique(na.omit(x)))
+gene_list <- gene_list[lengths(gene_list) >= 10]
+
+# MSigDB Hallmark 
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+# CompareCluster 
+hallmark_cc <- compareCluster(
+  geneCluster = gene_list,
+  fun = "enricher",
+  TERM2GENE = hallmark_df,
+  pvalueCutoff = 0.05
 )
 
-if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
-  cat("  \u2713 Found", nrow(gseKEGG_female@result), "pathways\n\n")
+# Check result
+print(hallmark_cc)
 
-  write.csv(
-    gseKEGG_female@result,
-    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.csv"),
-    row.names = FALSE
-  )
+# Plot
+dotplot(hallmark_cc, showCategory = 20)
 
-  p_female <- dotplot(
-    gseKEGG_female,
-    showCategory = 20,
-    split = ".sign",
-    title = "Female DESeq2 GSEA KEGG"
+# Make sure Cluster labels are clean
+hallmark_cc@compareClusterResult$Cluster <- factor(
+  hallmark_cc@compareClusterResult$Cluster,
+  levels = c("activated", "suppressed"),
+  labels = c("Up in Heat", "Down in Heat")
+)
+
+# Plot
+p <- dotplot(
+  hallmark_cc,
+  showCategory = 10,      # adjust like your example
+  font.size = 12
+) +
+  scale_color_gradient(
+    low = "#2c7bb6",
+    high = "#d7191c"
   ) +
-    facet_grid(
-      . ~ .sign,
-      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
-
-  ggsave(
-    file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
-    p_female, width = 14, height = 10, dpi = 300
+  scale_size(range = c(3, 8)) +
+  labs(
+    title = "Female DESeq2 MSigDB Enrichment",
+    x = "Gene Ratio",
+    y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    panel.grid.minor = element_blank()
   )
-  print(p_female)
-} else {
-  cat("  No significant pathways found for Females.\n\n")
-}
+
+p
+```
+
+### GSEA MSigDB - Males only
+
+```{r}
+
+# Clean genes
+res_df <- as.data.frame(DEG_male_deseq)
+res_df$gene_symbol <- sub(".*\\|", "", res_df$Gene_ID)
+
+res_df <- res_df %>%
+  mutate(sign = ifelse(log2FoldChange > 0, "activated", "suppressed")) %>%
+  filter(!is.na(gene_symbol), gene_symbol != "")
+
+# Gene lists
+gene_list <- split(res_df$gene_symbol, res_df$sign)
+
+gene_list <- lapply(gene_list, function(x) unique(na.omit(x)))
+gene_list <- gene_list[lengths(gene_list) >= 10]
+
+# MSigDB Hallmark 
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+# CompareCluster 
+hallmark_cc <- compareCluster(
+  geneCluster = gene_list,
+  fun = "enricher",
+  TERM2GENE = hallmark_df,
+  pvalueCutoff = 0.05
+)
+
+# Check result
+print(hallmark_cc)
+
+
+# Plot
+dotplot(hallmark_cc, showCategory = 20)
+
+# Make sure Cluster labels are clean
+hallmark_cc@compareClusterResult$Cluster <- factor(
+  hallmark_cc@compareClusterResult$Cluster,
+  levels = c("activated", "suppressed"),
+  labels = c("Up in Heat", "Down in Heat")
+)
+
+# Plot
+p <- dotplot(
+  hallmark_cc,
+  showCategory = 10,      # adjust like your example
+  font.size = 12
+) +
+  scale_color_gradient(
+    low = "#2c7bb6",
+    high = "#d7191c"
+  ) +
+  scale_size(range = c(3, 8)) +
+  labs(
+    title = "Male DESeq2 MSigDB Enrichment",
+    x = "Gene Ratio",
+    y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    panel.grid.minor = element_blank()
+  )
+
+p
+```
+
+### GSEA MSigDB - Interaction 
+
+```{r}
+
+
+# Clean genes
+res_df <- as.data.frame(DEG_int_deseq)
+res_df$gene_symbol <- sub(".*\\|", "", res_df$Gene_ID)
+
+res_df <- res_df %>%
+  mutate(sign = ifelse(log2FoldChange > 0, "activated", "suppressed")) %>%
+  filter(!is.na(gene_symbol), gene_symbol != "")
+
+# Gene lists
+gene_list <- split(res_df$gene_symbol, res_df$sign)
+
+gene_list <- lapply(gene_list, function(x) unique(na.omit(x)))
+gene_list <- gene_list[lengths(gene_list) >= 10]
+
+# MSigDB Hallmark 
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+# CompareCluster 
+hallmark_cc <- compareCluster(
+  geneCluster = gene_list,
+  fun = "enricher",
+  TERM2GENE = hallmark_df,
+  pvalueCutoff = 0.05
+)
+
+# Check result
+print(hallmark_cc)
+
+
+
+# Plot
+dotplot(hallmark_cc, showCategory = 20)
+
+# Make sure Cluster labels are clean
+hallmark_cc@compareClusterResult$Cluster <- factor(
+  hallmark_cc@compareClusterResult$Cluster,
+  levels = c("activated", "suppressed"),
+  labels = c("Male-biased", "Female-biased")
+)
+
+# Plot
+p <- dotplot(
+  hallmark_cc,
+  showCategory = 10,      # adjust like your example
+  font.size = 12
+) +
+  scale_color_gradient(
+    low = "#2c7bb6",
+    high = "#d7191c"
+  ) +
+  scale_size(range = c(3, 8)) +
+  labs(
+    title = "Interaction DESeq2 MSigDB Enrichment",
+    x = "Gene Ratio",
+    y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    panel.grid.minor = element_blank()
+  )
+
+p
 
 ```
+
+
 
 # Load Data Files for WGCNA 
 
@@ -565,6 +792,9 @@ cat("Female samples:", ncol(Counts_AB_Female), "| genes:", nrow(Counts_AB_Female
 ```{r}
 
 run_wgcna <- function(counts, meta, out_dir, label) {
+
+  # Doesn't knit otherwise cor() from another package has priority......
+cor <- WGCNA::cor
 
   cat(" WGCNA:", label, "\n")
 
@@ -752,6 +982,8 @@ run_wgcna <- function(counts, meta, out_dir, label) {
     module_eigengenes = module_eigengenes,
     expr_mat = expr_mat
   ))
+  
+  cor <- stats::cor # restores it back to normal and not wgcna:cor()
 }
 ```
 
@@ -778,5 +1010,4 @@ wgcna_female <- run_wgcna(
   label   = "Female"
 )
 ```
-
 
