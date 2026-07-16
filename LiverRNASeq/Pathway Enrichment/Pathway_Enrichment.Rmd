@@ -793,6 +793,9 @@ cat("Female samples:", ncol(Counts_AB_Female), "| genes:", nrow(Counts_AB_Female
 
 run_wgcna <- function(counts, meta, out_dir, label) {
 
+  # Doesn't knit otherwise cor() from another package has priority......
+cor <- WGCNA::cor
+
   cat(" WGCNA:", label, "\n")
 
 ## Filter low-expression genes
@@ -979,6 +982,8 @@ run_wgcna <- function(counts, meta, out_dir, label) {
     module_eigengenes = module_eigengenes,
     expr_mat = expr_mat
   ))
+  
+  cor <- stats::cor # restores it back to normal and not wgcna:cor()
 }
 ```
 
