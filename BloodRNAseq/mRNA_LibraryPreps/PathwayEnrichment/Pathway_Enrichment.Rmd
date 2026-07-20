@@ -12,7 +12,7 @@ output: html_document
 # 4. Run gseKEGG (organism = "tgu") for Male and Female separately
 # 5. Export KEGG GSEA results to CSV and produce dotplots (Up in Heat / Down in Heat)
 # 6. Run GO for Male and Females (Enrich_GO for Over-Representation and GO-GSEA)
-# 7. Rung molecular signatures database 
+# 7. Run GSEA on Molecular Signatures Database (MSigDB) Hallmark genesets (Sidequest: Over-representation analysis with MSigDB)
 
 # Clear Memory and Check working directory
 
@@ -551,7 +551,57 @@ if (length(go_int$plots) > 0) {
 
 
 ### GSEA MSigDB - Females only
+```{r}
+gene_list_female <- DEG_female_deseq %>%
+  filter(!is.na(Symbol)) %>%                # Remove genes without Symbol
+  arrange(desc(Rank)) %>%                   # Sort by decreasing ranking statistic
+  { setNames(.$Rank, as.character(.$Symbol)) } %>%  # Create named vector: names = Symbol, values = Rank
+  .[!duplicated(names(.))]                  # Keep only the first occurrence of duplicated Symbol
 
+gene_list_female <- sort(gene_list_female, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_female), "\n\n")
+
+# Download MSigDB Hallmark genes sets
+hallmark <- msigdbr(
+  species = "Homo sapiens",
+  category = "H"
+)
+
+
+hallmark_df <- hallmark %>%
+  select(gs_name, gene_symbol)
+
+# Run GSEA
+female_hallmark_gsea <- GSEA(
+  geneList = gene_list_female,
+  TERM2GENE = hallmark_df,
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+#  pAdjustMethod = "BH",
+  verbose = FALSE
+)
+
+# Make results data frame
+female_gsea_results <- as.data.frame(female_hallmark_gsea)
+
+# Plot
+  p_f <- dotplot(
+    female_hallmark_gsea,
+    showCategory = 20,
+    split = ".sign",
+    title = "female DESeq2 GSEA MSigDB"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Up in heat", suppressed = "Down in heat"))
+    )
+
+
+  print(p_f)
+```
+
+### Over-representation analysis (ORA) MSigDB - Females only
 ```{r}
 library(dplyr)
 library(msigdbr)
@@ -635,8 +685,61 @@ p
   )
 ```
 
-### GSEA MSigDB - Males only
 
+### GSEA MSigDB - Males only
+```{r}
+gene_list_male <- DEG_male_deseq %>%
+  filter(!is.na(Symbol)) %>%                # Remove genes without Symbol
+  arrange(desc(Rank)) %>%                   # Sort by decreasing ranking statistic
+  { setNames(.$Rank, as.character(.$Symbol)) } %>%  # Create named vector: names = Symbol, values = Rank
+  .[!duplicated(names(.))]                  # Keep only the first occurrence of duplicated Symbol
+
+gene_list_male <- sort(gene_list_male, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_male), "\n\n")
+
+# Download MSigDB Hallmark genes sets
+hallmark <- msigdbr(
+  species = "Homo sapiens",
+  category = "H"
+)
+
+
+hallmark_df <- hallmark %>%
+  select(gs_name, gene_symbol)
+
+# Run GSEA
+male_hallmark_gsea <- GSEA(
+  geneList = gene_list_male,
+  TERM2GENE = hallmark_df,
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+#  pAdjustMethod = "BH",
+  verbose = FALSE
+)
+
+# Make results data frame
+male_gsea_results <- as.data.frame(male_hallmark_gsea)
+
+# Plot
+# Plot
+  p_m <- dotplot(
+    male_hallmark_gsea,
+    showCategory = 20,
+    split = ".sign",
+    title = "male DESeq2 GSEA MSigDB"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Up in heat", suppressed = "Down in heat"))
+    )
+
+
+  print(p_m)
+```
+
+
+### Over-representation analysis (ORA) MSigDB - Males only
 ```{r}
 library(dplyr)
 library(msigdbr)
@@ -722,6 +825,59 @@ p
 ```
 
 ### GSEA MSigDB - Interaction 
+
+```{r}
+gene_list_int <- DEG_int_deseq %>%
+  filter(!is.na(Symbol)) %>%                # Remove genes without Symbol
+  arrange(desc(Rank)) %>%                   # Sort by decreasing ranking statistic
+  { setNames(.$Rank, as.character(.$Symbol)) } %>%  # Create named vector: names = Symbol, values = Rank
+  .[!duplicated(names(.))]                  # Keep only the first occurrence of duplicated Symbol
+
+gene_list_int <- sort(gene_list_int, decreasing = TRUE)
+cat("  Ranked genes:", length(gene_list_int), "\n\n")
+
+# Download MSigDB Hallmark genes sets
+hallmark <- msigdbr(
+  species = "Homo sapiens",
+  category = "H"
+)
+
+
+hallmark_df <- hallmark %>%
+  select(gs_name, gene_symbol)
+
+# Run GSEA
+int_hallmark_gsea <- GSEA(
+  geneList = gene_list_int,
+  TERM2GENE = hallmark_df,
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+#  pAdjustMethod = "BH",
+  verbose = FALSE
+)
+
+# Make results data frame
+int_gsea_results <- as.data.frame(int_hallmark_gsea)
+
+# Plot
+# Plot
+  p_i <- dotplot(
+    int_hallmark_gsea,
+    showCategory = 20,
+    split = ".sign",
+    title = "Interaction DESeq2 GSEA MSigDB"
+  ) +
+    facet_grid(
+      . ~ .sign,
+      labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
+    )
+
+
+  print(p_i)
+```
+
+### Over-representation analysis (ORA) MSigDB - Interaction 
 
 ```{r}
 library(dplyr)
