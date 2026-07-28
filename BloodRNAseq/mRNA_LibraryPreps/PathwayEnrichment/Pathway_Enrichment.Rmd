@@ -15,7 +15,6 @@ output: html_document
 # 7. Run GSEA on Molecular Signatures Database (MSigDB) Hallmark genesets (Sidequest: Over-representation analysis with MSigDB)
 
 # Clear Memory and Check working directory
-
 ```{r}
 
 rm(list = ls(all = TRUE))
@@ -569,7 +568,7 @@ hallmark <- msigdbr(
 
 
 hallmark_df <- hallmark %>%
-  select(gs_name, gene_symbol)
+    dplyr::select(gs_name, gene_symbol)
 
 # Run GSEA
 female_hallmark_gsea <- GSEA(
@@ -585,6 +584,10 @@ female_hallmark_gsea <- GSEA(
 # Make results data frame
 female_gsea_results <- as.data.frame(female_hallmark_gsea)
 
+# Save as csv
+  write.csv( female_gsea_results , "Results/GSEA/DESeq2_Female/GSEA_MSigDB_Female.csv",
+    row.names = FALSE)
+
 # Plot
   p_f <- dotplot(
     female_hallmark_gsea,
@@ -599,6 +602,11 @@ female_gsea_results <- as.data.frame(female_hallmark_gsea)
 
 
   print(p_f)
+  
+  ggsave(
+    file.path(CONFIG$out_dir_female, "GSEA_MSigDB_Female.png"),
+    p_f, width = 14, height = 10, dpi = 300
+  )
 ```
 
 ### Over-representation analysis (ORA) MSigDB - Females only
@@ -641,7 +649,7 @@ hallmark_cc <- compareCluster(
 print(hallmark_cc)
 
 # Save as csv
-  write.csv( hallmark_cc , "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/PathwayEnrichment/Results/GSEA/DESeq2_Female/GSEA_MSigDB_Female.csv",
+  write.csv( hallmark_cc , "Results/GSEA/DESeq2_Female/ORA_MSigDB_Female.csv",
     row.names = FALSE)
 
 # Plot
@@ -680,7 +688,7 @@ p <- dotplot(
 p
 
   ggsave(
-    file.path(CONFIG$out_dir_female, "GSEA_MSigDB_Female.png"),
+    file.path(CONFIG$out_dir_female, "ORA_MSigDB_Female.png"),
     p, width = 14, height = 10, dpi = 300
   )
 ```
@@ -705,7 +713,7 @@ hallmark <- msigdbr(
 
 
 hallmark_df <- hallmark %>%
-  select(gs_name, gene_symbol)
+    dplyr::select(gs_name, gene_symbol)
 
 # Run GSEA
 male_hallmark_gsea <- GSEA(
@@ -721,7 +729,10 @@ male_hallmark_gsea <- GSEA(
 # Make results data frame
 male_gsea_results <- as.data.frame(male_hallmark_gsea)
 
-# Plot
+# Save as csv
+  write.csv( male_gsea_results , "Results/GSEA/DESeq2_Male/GSEA_MSigDB_Male.csv",
+    row.names = FALSE)
+
 # Plot
   p_m <- dotplot(
     male_hallmark_gsea,
@@ -736,6 +747,11 @@ male_gsea_results <- as.data.frame(male_hallmark_gsea)
 
 
   print(p_m)
+  
+  ggsave(
+    file.path(CONFIG$out_dir_male, "GSEA_MSigDB_Male.png"),
+    p_m,, width = 14, height = 10, dpi = 300
+  )
 ```
 
 
@@ -779,7 +795,7 @@ hallmark_cc <- compareCluster(
 print(hallmark_cc)
 
 # Save as csv
-  write.csv( hallmark_cc , "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/PathwayEnrichment/Results/GSEA/DESeq2_Male/GSEA_MSigDB_Male.csv",
+  write.csv( hallmark_cc , "Results/GSEA/DESeq2_Male/ORA_MSigDB_Male.csv",
     row.names = FALSE)
 
 
@@ -819,7 +835,7 @@ p <- dotplot(
 p
 
   ggsave(
-    file.path(CONFIG$out_dir_male, "GSEA_MSigDB_Male.png"),
+    file.path(CONFIG$out_dir_male, "ORA_MSigDB_Male.png"),
     p, width = 14, height = 10, dpi = 300
   )
 ```
@@ -844,7 +860,7 @@ hallmark <- msigdbr(
 
 
 hallmark_df <- hallmark %>%
-  select(gs_name, gene_symbol)
+    dplyr::select(gs_name, gene_symbol)
 
 # Run GSEA
 int_hallmark_gsea <- GSEA(
@@ -860,7 +876,10 @@ int_hallmark_gsea <- GSEA(
 # Make results data frame
 int_gsea_results <- as.data.frame(int_hallmark_gsea)
 
-# Plot
+# Save as csv
+  write.csv( int_gsea_results , "Results/GSEA/DESeq2_Int/GSEA_MSigDB_Interaction.csv",
+    row.names = FALSE)
+
 # Plot
   p_i <- dotplot(
     int_hallmark_gsea,
@@ -875,6 +894,11 @@ int_gsea_results <- as.data.frame(int_hallmark_gsea)
 
 
   print(p_i)
+  
+  ggsave(
+    file.path(CONFIG$out_dir_int, "GSEA_MSigDB_Interaction.png"),
+    p_i, width = 14, height = 10, dpi = 300
+  )
 ```
 
 ### Over-representation analysis (ORA) MSigDB - Interaction 
@@ -918,7 +942,7 @@ hallmark_cc <- compareCluster(
 print(hallmark_cc)
 
 # Save as csv
-  write.csv( hallmark_cc , "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/PathwayEnrichment/Results/GSEA/DESeq2_Int/GSEA_MSigDB_Interaction.csv",
+  write.csv( hallmark_cc , "Results/GSEA/DESeq2_Int/ORA_MSigDB_Interaction.csv",
     row.names = FALSE)
 
 
@@ -958,7 +982,7 @@ p <- dotplot(
 p
 
   ggsave(
-    file.path(CONFIG$out_dir_int, "GSEA_MSigDB_Interaction.png"),
+    file.path(CONFIG$out_dir_int, "ORA_MSigDB_Interaction.png"),
     p, width = 14, height = 10, dpi = 300
   )
 ```
