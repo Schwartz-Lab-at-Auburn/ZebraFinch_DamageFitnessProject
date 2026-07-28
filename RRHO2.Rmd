@@ -1,0 +1,706 @@
+---
+title: "RRHO2"
+author: "Brynleigh Payne"
+date: "2026-07-10"
+output: html_document
+---
+
+#### Modified from:
+#### https://github.com/imillercrews/TRES_heat_biomarkers_bl/blob/main/linger_tres_gene_expression_script.R#L2264  
+### RRHO2 Correlation analysis of gene expression
+# R 4.3.1 
+ 
+# Clear Memory and Check working directory
+```{r}
+
+rm(list = ls(all = TRUE))
+getwd()
+```
+
+#### load libraries ####
+```{r}
+## install packages
+# BiocManager::install("DESeq2")
+# BiocManager::install("vsn")
+# BiocManager::install("ComplexHeatmap")
+# devtools::install_github("RRHO2/RRHO2", build_opts = c("--no-resave-data", "--no-manual"))
+#remotes::install_github("RRHO2/RRHO2")
+
+## load libraries
+library(tidyverse)
+library("DESeq2")
+
+# GO annotation
+library(AnnotationForge)
+
+# DEG
+library(pvclust)
+library(vsn)
+
+# variance
+library(variancePartition)
+
+# interaction
+library(ComplexHeatmap)
+library(RRHO2)
+
+# WGCNA
+library(WGCNA)
+
+# GO term analysis
+library(clusterProfiler)
+#library(org.Hrustica.eg.db)
+library(enrichplot)
+library(AnnotationDbi)
+library(GO.db)
+
+```
+
+
+### RRHO2 - Correlation Analysis
+
+## Blood - Run RRHO2 Correlation for males and females heat vs control response
+# DESeq2 ran for each sex separately: = ~ 0 + treatment
+```{r}
+# Read in Blood DESeq2 DGE data
+blood.res.females.heat.df <- read_csv("BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_female_deseq.csv")
+
+blood.res.males.heat.df <- read_csv("BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_male_deseq.csv")
+
+# Check intersection of gene lists
+male_genes <- blood.res.males.heat.df$Gene_ID
+female_genes <- blood.res.females.heat.df$Gene_ID
+
+length(male_genes)
+length(female_genes)
+
+length(intersect(male_genes, female_genes))
+length(setdiff(male_genes, female_genes))
+length(setdiff(female_genes, male_genes))
+
+setequal(blood.res.males.heat.df$Gene_ID, blood.res.females.heat.df$Gene_ID)
+
+# Identify common genes to use for RRHO2
+common <- intersect(blood.res.males.heat.df$Gene_ID, blood.res.females.heat.df$Gene_ID)
+
+blood.res.males.heat.df <- blood.res.males.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+blood.res.females.heat.df <- blood.res.females.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+setequal(blood.res.males.heat.df$Gene_ID, blood.res.females.heat.df$Gene_ID)
+
+# Run RRHO2 Correlation for males and females heat vs control response
+male_rrho <- blood.res.males.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+female_rrho <- blood.res.females.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+str(male_rrho)
+
+rrho_output <- RRHO2_initialize(
+    male_rrho,
+    female_rrho,
+    labels = c("Male Heat vs Control - Blood", "Female Heat vs Control - Blood"),
+    boundary = 0.1
+)
+
+# Get data frame of quadrant genes 
+rrho_output.df = data.frame(Gene = rrho_output$genelist_uu$gene_list_overlap_uu,
+                            Direction = 'up.up') %>% 
+  full_join(data.frame(Gene = rrho_output$genelist_dd$gene_list_overlap_dd,
+                       Direction = 'down.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_ud$gene_list_overlap_ud,
+                                NA),
+                       Direction = 'up.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_du$gene_list_overlap_du,
+                                NA),
+                       Direction = 'down.up')) %>% 
+  na.omit()
+
+# Plot
+png('RRHO2_heat_by_sex_blood.png')
+RRHO2_heatmap(rrho_output)
+dev.off()
+
+```
+
+
+## Liver - Run RRHO2 Correlation for males and females heat vs control response
+# DESeq2 ran for each sex separately: = ~ 0 + treatment
+```{r}
+# Read in Blood DESeq2 DGE data
+liver.res.females.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_female_deseq_allgenes.csv")
+
+liver.res.males.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_male_deseq_allgenes.csv")
+
+# Check intersection of gene lists
+male_genes <- liver.res.males.heat.df$Gene_ID
+female_genes <- liver.res.females.heat.df$Gene_ID
+
+length(male_genes)
+length(female_genes)
+
+length(intersect(male_genes, female_genes))
+length(setdiff(male_genes, female_genes))
+length(setdiff(female_genes, male_genes))
+
+setequal(liver.res.males.heat.df$Gene_ID, liver.res.females.heat.df$Gene_ID)
+
+# Identify common genes to use for RRHO2
+common <- intersect(liver.res.males.heat.df$Gene_ID, liver.res.females.heat.df$Gene_ID)
+
+liver.res.males.heat.df <- liver.res.males.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+liver.res.females.heat.df <- liver.res.females.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+setequal(liver.res.males.heat.df$Gene_ID, liver.res.females.heat.df$Gene_ID)
+
+# Run RRHO2 Correlation for males and females heat vs control response
+male_rrho <- liver.res.males.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+female_rrho <- liver.res.females.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+str(male_rrho)
+
+rrho_output <- RRHO2_initialize(
+    male_rrho,
+    female_rrho,
+    labels = c("Male Heat vs Control - Liver", "Female Heat vs Control - Liver"),
+    boundary = 0.1
+)
+
+# Get data frame of quadrant genes 
+rrho_output.df = data.frame(Gene = rrho_output$genelist_uu$gene_list_overlap_uu,
+                            Direction = 'up.up') %>% 
+  full_join(data.frame(Gene = rrho_output$genelist_dd$gene_list_overlap_dd,
+                       Direction = 'down.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_ud$gene_list_overlap_ud,
+                                NA),
+                       Direction = 'up.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_du$gene_list_overlap_du,
+                                NA),
+                       Direction = 'down.up')) %>% 
+  na.omit()
+
+# Plot
+png('RRHO2_heat_by_sex_liver.png')
+RRHO2_heatmap(rrho_output)
+dev.off()
+
+```
+
+
+## Blood vs Liver - Run RRHO2 Correlation for males heat vs control response
+# DESeq2 ran for each sex separately: = ~ 0 + treatment
+```{r}
+# Read in male DESeq2 DGE data
+blood.res.males.heat.df <- read_csv("BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_male_deseq.csv")
+liver.res.males.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_male_deseq_allgenes.csv")
+
+# Check intersection of gene lists
+blood_male_genes <- blood.res.males.heat.df$Gene_ID
+liver_male_genes <- liver.res.males.heat.df$Gene_ID
+
+length(blood_male_genes)
+length(liver_male_genes)
+
+length(intersect(blood_male_genes, liver_male_genes))
+length(setdiff(blood_male_genes, liver_male_genes))
+length(setdiff(liver_male_genes, blood_male_genes))
+
+setequal(liver.res.males.heat.df$Gene_ID, blood.res.males.heat.df$Gene_ID)
+
+# Identify common genes to use for RRHO2
+common <- intersect(liver.res.males.heat.df$Gene_ID, blood.res.males.heat.df$Gene_ID)
+
+liver.res.males.heat.df <- liver.res.males.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+blood.res.males.heat.df <- blood.res.males.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+setequal(liver.res.males.heat.df$Gene_ID, blood.res.males.heat.df$Gene_ID)
+
+# Run RRHO2 Correlation for males heat vs control response
+liver_male_rrho <- liver.res.males.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+blood_male_rrho <- blood.res.males.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+rrho_output <- RRHO2_initialize(
+    liver_male_rrho,
+    blood_male_rrho,
+    labels = c("Male Heat vs Control - Liver", "Male Heat vs Control - Blood"),
+    boundary = 0.1
+)
+
+# Get data frame of quadrant genes 
+rrho_output.df = data.frame(Gene = rrho_output$genelist_uu$gene_list_overlap_uu,
+                            Direction = 'up.up') %>% 
+  full_join(data.frame(Gene = rrho_output$genelist_dd$gene_list_overlap_dd,
+                       Direction = 'down.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_ud$gene_list_overlap_ud,
+                                NA),
+                       Direction = 'up.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_du$gene_list_overlap_du,
+                                NA),
+                       Direction = 'down.up')) %>% 
+  na.omit()
+
+# Plot
+png('RRHO2_male_heat_by_tissue.png')
+RRHO2_heatmap(rrho_output)
+dev.off()
+
+```
+
+
+## Blood vs Liver - Run RRHO2 Correlation for females heat vs control response
+# DESeq2 ran for each sex separately: = ~ 0 + treatment
+```{r}
+# Read in male DESeq2 DGE data
+blood.res.females.heat.df <- read_csv("BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_female_deseq.csv")
+liver.res.females.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_female_deseq_allgenes.csv")
+
+# Check intersection of gene lists
+blood_female_genes <- blood.res.females.heat.df$Gene_ID
+liver_female_genes <- liver.res.females.heat.df$Gene_ID
+
+length(blood_female_genes)
+length(liver_female_genes)
+
+length(intersect(blood_female_genes, liver_female_genes))
+length(setdiff(blood_female_genes, liver_female_genes))
+length(setdiff(liver_female_genes, blood_female_genes))
+
+setequal(liver.res.females.heat.df$Gene_ID, blood.res.females.heat.df$Gene_ID)
+
+# Identify common genes to use for RRHO2
+common <- intersect(liver.res.females.heat.df$Gene_ID, blood.res.females.heat.df$Gene_ID)
+
+liver.res.females.heat.df <- liver.res.females.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+blood.res.females.heat.df <- blood.res.females.heat.df %>%
+    dplyr::filter(Gene_ID %in% common)
+
+setequal(liver.res.females.heat.df$Gene_ID, blood.res.females.heat.df$Gene_ID)
+
+# Run RRHO2 Correlation for females heat vs control response
+liver_female_rrho <- liver.res.females.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+blood_female_rrho <- blood.res.females.heat.df |>
+  dplyr::mutate(metric = sign(log2FoldChange) * -log10(pvalue)) |>
+  dplyr::select(Gene_ID, metric) |>
+  tidyr::drop_na() |>
+  as.data.frame()
+
+rrho_output <- RRHO2_initialize(
+    liver_female_rrho,
+    blood_female_rrho,
+    labels = c("Female Heat vs Control - Liver", "Female Heat vs Control - Blood"),
+    boundary = 0.1
+)
+
+# Get data frame of quadrant genes 
+rrho_output.df = data.frame(Gene = rrho_output$genelist_uu$gene_list_overlap_uu,
+                            Direction = 'up.up') %>% 
+  full_join(data.frame(Gene = rrho_output$genelist_dd$gene_list_overlap_dd,
+                       Direction = 'down.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_ud$gene_list_overlap_ud,
+                                NA),
+                       Direction = 'up.down'))%>% 
+  full_join(data.frame(Gene = c(rrho_output$genelist_du$gene_list_overlap_du,
+                                NA),
+                       Direction = 'down.up')) %>% 
+  na.omit()
+
+# Plot
+png('RRHO2_female_heat_by_tissue.png')
+RRHO2_heatmap(rrho_output)
+dev.off()
+
+```
+
+
+
+# paper
+pdf('figures/paper/DEG_linger_heat_sex_3.pdf',
+    height = 6.5,
+    width = 6.5)
+RRHO2_heatmap(rrho_output)
+dev.off()
+
+
+# gene categories
+rrho_output.df %>% 
+  count(Direction) %>% 
+  ggplot(aes(x = Direction,
+             y = n,
+             label = n)) +
+  geom_label() +
+  theme_classic() +
+  ylab('Number of genes') +
+  xlab('RRHO category')
+ggsave('/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/RRHO_genes_per_category.png') 
+
+### graph logfc across sexes
+# get max and min
+max = max(abs(res.males.heat.df$log2FoldChange),
+          abs(res.females.heat.df$log2FoldChange))
+
+## graph DEG for each sex
+# all DEG
+res.males.heat.df %>%
+  dplyr::select(Gene,
+                log2FoldChange) %>%
+  dplyr::rename(male_fc = log2FoldChange) %>%
+  inner_join(res.females.heat.df %>%
+               dplyr::select(Gene, log2FoldChange) %>%
+               dplyr::rename(female_fc = log2FoldChange),
+             by = "Gene") %>%
+  mutate(Concordance = case_when(sign(male_fc) != sign(female_fc) ~ 'Dis',
+                                 TRUE ~ 'Con')) %>% 
+  left_join(res.treat.df %>%
+              mutate(Sig = ifelse(padj < 0.16,
+                                   'Sig',
+                                   'Not sig')) %>% 
+              dplyr::select(Gene,
+                            Sig)) %>%
+  mutate(Sig = ifelse(is.na(Sig),
+                      'Not sig',
+                      Sig),
+         label = ifelse(Sig == 'Sig',
+                        Gene,
+                        NA)) %>% 
+  arrange(Sig) %>% 
+  ggplot(aes(x = male_fc,
+             y = female_fc,
+             color = Sig)) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              linetype = 'dashed') +
+  geom_point() +
+  ggrepel::geom_label_repel(aes(label = label),
+                            color = 'black',
+                            force = 15,
+                            force_pull = 0,
+                            point.padding = 0.5,
+                            box.padding = 1) +
+  theme_classic() +
+  xlim(-max,
+       max) +
+  ylim(-max,
+       max) +
+  scale_color_manual(values = c('black',
+                                'red'))+
+    ggtitle('All DEG')
+ggsave('figures/DEG/Interaction scatterplot DEG.png')
+
+# each sex
+```{r}
+res.males.heat.df %>%
+  mutate(Male.sig = ifelse(padj < 0.05,
+                      'Sig',
+                      'Not sig')) %>% 
+  dplyr::select(Gene_ID,
+                log2FoldChange,
+                Male.sig) %>%
+  dplyr::rename(male_fc = log2FoldChange) %>%
+  inner_join(res.females.heat.df %>%
+               mutate(Female.sig = ifelse(padj < 0.05,
+                                   'Sig',
+                                   'Not sig')) %>%
+               dplyr::select(Gene_ID,
+                             log2FoldChange,
+                             Female.sig) %>%
+               dplyr::rename(female_fc = log2FoldChange),
+             by = "Gene_ID") %>%
+  mutate(Concordance = case_when(sign(male_fc) != sign(female_fc) ~ 'Dis',
+                                 TRUE ~ 'Con'))  %>%
+  mutate(Sig = case_when(Male.sig == 'Sig' & Female.sig != 'Sig' ~ 'Male',
+                         Male.sig != 'Sig' & Female.sig == 'Sig' ~ 'Female',
+                         Male.sig == 'Sig' & Female.sig == 'Sig' ~ 'Both',
+                         TRUE ~ 'Not sig'),
+         Sig.order = case_when(Sig == 'Both' ~ 1,
+                               Sig == 'Male' ~ 2,
+                               Sig == 'Female' ~ 3,
+                               Sig == 'Not sig' ~ 0)) %>% 
+  arrange(Sig.order) %>% 
+  mutate(Label = ifelse(Gene_ID %in% c('LOC120765528',
+                                    'RYBP'),
+                        Gene_ID,
+                        NA)) %>% 
+  ggplot(aes(x = male_fc,
+             y = female_fc,
+             color = Sig)) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              linetype = 'dashed') +
+  geom_point() +
+  ggrepel::geom_label_repel(aes(label = Label),
+             color = 'black') +
+  theme_classic() +
+  xlim(-max,
+       max) +
+  ylim(-max,
+       max) + 
+  scale_color_manual(values = c('purple',
+                                'darkred',
+                                'darkblue',
+                                'grey'))+
+  labs(color = 'Sig (padj<0.05)') +
+  ggtitle('Sex specific DEG')
+ggsave('/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/Interaction scatterplot sex specific DEG.png')
+
+# paper
+res.males.heat.df =read.csv('/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/res.males.heat.df.csv')
+
+res.females.heat.df =read.csv('/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/res.females.heat.df.csv')
+
+res.males.heat.df %>%
+  mutate(Male.sig = ifelse(padj < 0.05,
+                           'Sig',
+                           'Not sig')) %>% 
+  dplyr::select(Gene,
+                log2FoldChange,
+                Male.sig) %>%
+  dplyr::rename(male_fc = log2FoldChange) %>%
+  inner_join(res.females.heat.df %>%
+               mutate(Female.sig = ifelse(padj < 0.05,
+                                          'Sig',
+                                          'Not sig')) %>%
+               dplyr::select(Gene,
+                             log2FoldChange,
+                             Female.sig) %>%
+               dplyr::rename(female_fc = log2FoldChange),
+             by = "Gene") %>%
+  mutate(Concordance = case_when(sign(male_fc) != sign(female_fc) ~ 'Dis',
+                                 TRUE ~ 'Con'))  %>%
+  mutate(Sig = case_when(Male.sig == 'Sig' & Female.sig != 'Sig' ~ 'Male',
+                         Male.sig != 'Sig' & Female.sig == 'Sig' ~ 'Female',
+                         Male.sig == 'Sig' & Female.sig == 'Sig' ~ 'Both',
+                         TRUE ~ 'Not sig'),
+         Sig.order = case_when(Sig == 'Both' ~ 1,
+                               Sig == 'Male' ~ 2,
+                               Sig == 'Female' ~ 3,
+                               Sig == 'Not sig' ~ 0),
+         Sig.color = case_when(female_fc > 0 & Sig == 'Both' ~ 'Heat',
+                               female_fc > 0 & Sig == 'Male' ~ 'Heat',
+                               female_fc > 0 & Sig == 'Female' ~ 'Heat',
+                               female_fc < 0 & Sig == 'Both' ~ 'Con',
+                               female_fc < 0 & Sig == 'Male' ~ 'Con',
+                               female_fc < 0 & Sig == 'Femal' ~ 'Con',
+                               TRUE ~ 'none'),
+         Sig.shape = case_when(Sig == 'Both' ~ 'Both',
+                               Sig == 'Male' | Sig == 'Female' ~ 'none',
+                               TRUE ~ 'none')) %>% 
+  arrange(desc(Sig.color)) %>% 
+  ggplot(aes(x = male_fc,
+             y = female_fc,
+             color = Sig.color,
+             shape = Sig.shape)) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  # geom_abline(slope = 1,
+  #             intercept = 0,
+  #             linetype = 'dashed') +
+  geom_point(size = 3) +
+  # ggrepel::geom_label_repel(aes(label = Label),
+  #                           color = 'black') +
+  theme_classic() +
+  # xlim(-max,
+  #      max) +
+  # ylim(-max,
+  #      max) + 
+  scale_color_manual(values = c('#464b9f',
+                                '#f26622',
+                                'grey'))+
+  labs(color = 'Sig (padj<0.05)') +
+  ggtitle('Sex specific DEG') +
+  coord_fixed(ratio = 2) +
+  theme(legend.position = 'none') +
+  # theme(legend.position = 'inside',
+  #       legend.position.inside = c(0.9,
+  #                                  0.2)) +
+  xlab('Male log2FC')+
+  ylab('Female log2FC')
+ggsave('/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/Deg_linger_heat_sex_2a.pdf',
+       height = 3.25,
+       width = 3.25)
+
+# check overlap 
+res.males.heat.df %>%
+  mutate(Male.sig = ifelse(padj < 0.05,
+                           'Sig',
+                           'Not sig')) %>% 
+  dplyr::select(Gene,
+                log2FoldChange,
+                Male.sig) %>%
+  dplyr::rename(male_fc = log2FoldChange) %>%
+  inner_join(res.females.heat.df %>%
+               mutate(Female.sig = ifelse(padj < 0.05,
+                                          'Sig',
+                                          'Not sig')) %>%
+               dplyr::select(Gene,
+                             log2FoldChange,
+                             Female.sig) %>%
+               dplyr::rename(female_fc = log2FoldChange),
+             by = "Gene") %>%
+  mutate(Concordance = case_when(sign(male_fc) != sign(female_fc) ~ 'Dis',
+                                 TRUE ~ 'Con')) %>% 
+  mutate(Sig = case_when(Male.sig == 'Sig' & Female.sig != 'Sig' & male_fc > 0 ~ 'Male.up',
+                         Male.sig == 'Sig' & Female.sig != 'Sig' & male_fc < 0 ~ 'Male.down',
+                         Male.sig != 'Sig' & Female.sig == 'Sig' & female_fc > 0  ~ 'Female.up',
+                         Male.sig != 'Sig' & Female.sig == 'Sig' & female_fc < 0  ~ 'Female.down',
+                         Male.sig == 'Sig' & Female.sig == 'Sig' & male_fc > 0 ~ 'Both.up',
+                         Male.sig == 'Sig' & Female.sig == 'Sig'& male_fc < 0 ~ 'Both.down',
+                         TRUE ~ 'Not sig'),
+         Sig.order = case_when(Sig == 'Both' ~ 1,
+                               Sig == 'Male' ~ 2,
+                               Sig == 'Female' ~ 3,
+                               Sig == 'Not sig' ~ 0)) %>% 
+  full_join(res.treat.df %>% 
+              filter(padj < 0.155) %>% 
+              mutate(DEG.heat = 'DEG.heat') %>% 
+              dplyr::select(Gene,
+                            DEG.heat)) %>% 
+  count(Sig,
+        DEG.heat,
+        Concordance)
+
+```
+
+
+# Sig DEG.heat Concordance    n
+# 1    Both.down DEG.heat         Con    1
+# 2    Both.down     <NA>         Con   36
+# 3      Both.up     <NA>         Con   14
+# 4  Female.down     <NA>         Con    5
+# 5    Female.up     <NA>         Con    2
+# 6    Male.down     <NA>         Con   30
+# 7      Male.up     <NA>         Con    8
+# 8      Not sig DEG.heat         Con    4
+# 9      Not sig DEG.heat         Dis    1
+# 10     Not sig     <NA>         Con 8473
+# 11     Not sig     <NA>         Dis  730
+
+
+## heat boxplots both sexes
+# get TOP DEG
+# get overlapping DEG
+res.sex.both.heat.df.deg.top =
+  res.males.heat.df %>% 
+  mutate(Sig.male = ifelse(padj <= 0.05,
+                           'Sig',
+                           'Not sig')) %>% 
+  dplyr::select(Sig.male,
+                Gene,
+                padj) %>% 
+  left_join(res.females.heat.df %>% 
+              mutate(Sig.female = ifelse(padj <= 0.05,
+                                         'Sig',
+                                         'Not sig')) %>% 
+              dplyr::select(Sig.female,
+                            Gene,
+                            padj),
+            by = 'Gene',
+            suffix = c('_male',
+                       '_female')) %>% 
+  mutate(Sig.both = ifelse(Sig.male == 'Sig' & Sig.female == 'Sig',
+                           'Both',
+                           NA)) %>% 
+  filter(Sig.both == 'Both') %>% 
+    dplyr::select(Gene,
+                  padj_male,
+                  padj_female) %>% 
+    pivot_longer(cols = -c('Gene'),
+                 names_to = 'Sex',
+                 values_to = 'padj') %>% 
+    group_by(Sex) %>% 
+    slice_min(order_by = padj,
+              n = 1,
+              with_ties = FALSE) %>% 
+    ungroup() %>% 
+  pull(Gene) %>% 
+  unique()
+    
+    
+    
+# normalize and scale counts
+deg.sex.heat.mat = assay(vst(dds,
+                    blind = F))[res.sex.both.heat.df.deg.top,] %>% 
+  t() %>% 
+  scale() %>% 
+  as.data.frame() %>% 
+  rownames_to_column('Sample') %>% 
+  pivot_longer(-c(Sample),
+               names_to = 'Gene',
+               values_to = 'z.score') %>% 
+  left_join(data.linger.sample.meta) %>% 
+  left_join(data.linger.sample.sex)
+
+
+## graph each DEG boxplots
+# treatment temp
+# paper
+deg.sex.heat.mat %>% 
+  mutate(ID = paste0(Treatment,
+                     '.',
+                     Sex)) %>% 
+  ggplot(aes(x = ID,
+             y = z.score,
+             color = Treatment)) +
+  geom_boxplot(aes(group = ID),
+               outlier.shape = NA) +
+  geom_point(size = 2.5,
+             aes(shape = Sex)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank()) +
+  ylab('Gene expression (z-score)') +
+  xlab('') +
+  scale_color_manual(values = c('#464b9f',
+                                '#f26622')) +
+  facet_wrap(~Gene,
+             scale = 'free',
+             ncol = 2)  +
+  theme(legend.position = 'none')
+ggsave('figures/paper/DEG_linger_heat_sex_1b.pdf',
+       height = 3.25,
+       width = 3.25,
+       dpi = 720)
+
