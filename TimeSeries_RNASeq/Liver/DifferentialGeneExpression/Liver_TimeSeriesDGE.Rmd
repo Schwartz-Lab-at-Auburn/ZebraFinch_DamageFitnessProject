@@ -28,7 +28,7 @@ CONFIG <- list(
   counts_file     = "ZF_Liver_rawgene_count_matrix.csv",
   master_file     = "AHDB_Exp1_MasterSpreadSheet.csv",
   samplelist_file = "ZF_Liver_sample_list.csv",
-  out_dir         = "Results/Timeseries/Liver_Female/",
+  out_dir         = "Results",
 
   sex_levels      = "F",            
   outlier_bands   = numeric(0),     # none removed yet
@@ -66,11 +66,6 @@ set.seed(CONFIG$seed)
 ```
 
 # Load data and build metadata
-
-The master spreadsheet is long-format (one row per bird per blood-draw
-occasion), so `ID_Band` repeats. Dropping the Baseline and Heat draw occasions
-leaves exactly one row per bird — a row filter, not a collapse, so no values are
-silently discarded.
 
 ```{r load-metadata}
 Raw_Counts           <- utils::read.csv(CONFIG$counts_file, row.names = 1,
@@ -137,8 +132,6 @@ if (length(missing_cols)) {
 }
 ```
 
-`extra_cols` being non-empty is expected and harmless — the count matrix holds
-all 70 liver samples, while the metadata here is the female A–E subset.
 
 ```{r filter-samples}
 stopifnot(all(CONFIG$sex_levels %in% unique(meta$Sex)))
@@ -167,8 +160,7 @@ stopifnot(all(table(meta$Treatment) >= CONFIG$min_n_per_group),
 # Filter and TMM normalize
 
 ```{r normalize}
-## DGEList cbinds `samples` onto its own group/lib.size/norm.factors columns,
-## so guard against a name collision before it silently overwrites them.
+
 stopifnot(!any(c("group", "lib.size", "norm.factors") %in% colnames(meta)))
 
 dge <- edgeR::DGEList(counts = counts, samples = meta, group = meta$Treatment)
@@ -182,8 +174,6 @@ logcpm <- edgeR::cpm(dge, log = TRUE, prior.count = 2)
 
 # QC: PCA with candidate outliers labelled
 
-Birds 4531 and 4817 are flagged rather than removed. Check whether they sit
-apart from their own treatment group before deciding.
 
 ```{r pca, fig.width = 7, fig.height = 5}
 pca <- stats::prcomp(t(logcpm), center = TRUE, scale. = FALSE)
@@ -243,7 +233,7 @@ utils::write.csv(dist_tab,
 # Spline time-series model
 
 Omnibus test per gene: does expression change smoothly with time in any way?
-No logFC is reported because this is not a single comparison.
+
 
 ```{r spline-model}
 spl <- splines::ns(dge$samples$TimeVar, df = CONFIG$spline_df)
@@ -263,9 +253,6 @@ cat("Spline-significant genes (FDR <", CONFIG$fdr_cut, "):",
 
 # Cross-check: factor-based ANODEV
 
-With 5 discrete groups the spline (3 df) is a constrained version of the full
-factor model (4 df). Large disagreement means the smoothness assumption is doing
-work worth reporting.
 
 ```{r factor-anodev}
 grp_factor <- dge$samples$group
@@ -319,6 +306,81 @@ step_tab <- do.call(cbind, lapply(names(step_res), function(cn) {
 stopifnot(nrow(step_tab) == nrow(res_spline))
 
 print(vapply(step_res, function(x) sum(x$FDR < CONFIG$fdr_cut), numeric(1)))
+```
+
+
+# Reversal scatter: recovery logFC vs heat logFC
+
+```{r reversal-scatter, fig.width = 10, fig.height = 4}
+
+## Recovery-vs-Control contrasts (B - A already exists in step_res)
+con_rev <- limma::makeContrasts(
+  Rec2h  = C - A,
+  Rec24h = D - A,
+  Rec2wk = E - A,
+  levels = design_0
+)
+
+rev_lfc <- vapply(colnames(con_rev), function(cn) {
+  tt <- edgeR::topTags(edgeR::glmQLFTest(fit_0, contrast = con_rev[, cn]),
+                       n = Inf, sort.by = "none")$table
+  tt[rownames(res_spline), "logFC"]
+}, numeric(nrow(res_spline)))
+
+sig      <- res_spline$FDR < CONFIG$fdr_cut
+heat_lfc <- step_res$Heat_vs_Control[rownames(res_spline), "logFC"]
+
+panel_labs <- c(Rec2h = "+2 h", Rec24h = "+24 h", Rec2wk = "+2 wk")
+
+rev_df <- do.call(rbind, lapply(colnames(con_rev), function(cn) {
+  data.frame(
+    GeneID   = rownames(res_spline)[sig],
+    Heat_LFC = heat_lfc[sig],
+    Rec_LFC  = rev_lfc[sig, cn],
+    Panel    = factor(panel_labs[cn], levels = panel_labs)
+  )
+}))
+
+## Slope through the origin: fraction of heat response retained
+slope_tab <- do.call(rbind, lapply(split(rev_df, rev_df$Panel), function(d) {
+  f <- stats::lm(Rec_LFC ~ 0 + Heat_LFC, data = d)
+  data.frame(
+    Panel = d$Panel[1],
+    Slope = round(stats::coef(f)[1], 3),
+    SE    = round(summary(f)$coefficients[1, 2], 3),
+    R2    = round(summary(f)$r.squared, 3),
+    row.names = NULL
+  )
+}))
+print(slope_tab)
+
+slope_tab$Label <- sprintf("slope = %.2f \u00b1 %.2f\nR\u00b2 = %.2f",
+                           slope_tab$Slope, slope_tab$SE, slope_tab$R2)
+
+p_rev <- ggplot2::ggplot(rev_df, ggplot2::aes(Heat_LFC, Rec_LFC)) +
+  ggplot2::geom_hline(yintercept = 0, colour = "grey60") +
+  ggplot2::geom_abline(slope = 1, intercept = 0,
+                       linetype = 2, colour = "grey60") +
+  ggplot2::geom_point(alpha = 0.25, size = 1, colour = "steelblue") +
+  ggplot2::geom_smooth(method = "lm", formula = y ~ 0 + x,
+                       colour = "firebrick", linewidth = 0.8, se = TRUE) +
+  ggplot2::geom_text(data = slope_tab,
+                     ggplot2::aes(x = -Inf, y = Inf, label = Label),
+                     hjust = -0.1, vjust = 1.3, size = 3) +
+  ggplot2::facet_wrap(~ Panel, nrow = 1) +
+  ggplot2::labs(
+    x = "logFC Heat vs Control",
+    y = "logFC Recovery vs Control",
+  ) +
+  ggplot2::theme_bw()
+p_rev
+
+ggplot2::ggsave(file.path(CONFIG$out_dir, "Reversal_scatter.png"),
+                p_rev, width = 10, height = 4, dpi = 300)
+
+utils::write.csv(slope_tab[, c("Panel", "Slope", "SE", "R2")],
+                 file.path(CONFIG$out_dir, "Reversal_slopes.csv"),
+                 row.names = FALSE)
 ```
 
 # Trajectory clustering
