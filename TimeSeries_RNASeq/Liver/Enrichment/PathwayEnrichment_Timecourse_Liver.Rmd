@@ -1,0 +1,442 @@
+---
+title: "PathwayEnrichment — Liver Time-Series"
+author: "Ali Amer"
+date: "2026-08-07"
+output: html_document
+---
+
+# Script Goal:
+# 1. Load Timeseries_spline_results.csv from the liver A-E timecourse script
+#    (Symbol, spline FDR, per-contrast logFC_/FDR_ columns, Cluster)
+# 2. Map Symbol -> Entrez via biomaRt
+# 3. Build one ranked list per adjacent/endpoint contrast:
+#    sign(logFC) * -log10(FDR), Inf-guarded
+# 4. GSEA per contrast: gseKEGG (tgu), gseGO (BP/MF/CC), MSigDB Hallmark,
+#    MitoCarta3.0
+# 5. ORA per temporal cluster (k-means clusters from the timecourse script)
+#    via compareCluster with universe = all tested genes: GO, KEGG, Hallmark
+
+# Clear Memory and Check working directory
+
+```{r}
+
+rm(list = ls(all = TRUE))
+getwd()
+
+```
+
+# Load packages
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(biomaRt)
+library(clusterProfiler)
+library(AnnotationHub)
+library(ggplot2)
+library(patchwork)
+library(msigdbr)
+library(enrichplot)
+```
+
+# CONFIG
+
+```{r}
+
+CONFIG <- list(
+  tissue      = "Liver",
+  results_csv = "DifferentialGeneExpression/Timeseries_spline_results.csv",
+  out_root    = "Results/Enrichment_Timecourse_Liver",
+
+  # Contrast columns present as logFC_<name> / FDR_<name> in the results CSV
+  contrasts = c("Heat_vs_Control", "Rec2h_vs_Heat", "Rec24h_vs_Rec2h",
+                "Rec2wk_vs_Rec24h", "Rec2wk_vs_Control"),
+
+  # Ensembl BioMart
+  biomart_dataset = "tguttata_gene_ensembl",
+  biomart_version = 115,
+
+  # KEGG
+  kegg_organism = "tgu",
+  pvalue_cutoff = 0.05,
+
+  # GO — via AnnotationHub OrgDb (org.Taeniopygia_guttata)
+  go_ontologies = c("BP", "MF", "CC"),
+  go_key_type   = "SYMBOL",
+  go_min_gs     = 10,
+  go_max_gs     = 500,
+  go_show_cat   = 10,
+
+  # MitoCarta
+  mitocarta_xls = "Human.MitoCarta3.0.xls",
+
+  # Clusters (from the timecourse script's k-means)
+  n_clusters = 6
+)
+
+dir.create(CONFIG$out_root, recursive = TRUE, showWarnings = FALSE)
+for (cn in CONFIG$contrasts) {
+  dir.create(file.path(CONFIG$out_root, cn), recursive = TRUE,
+             showWarnings = FALSE)
+}
+dir.create(file.path(CONFIG$out_root, "Clusters"), recursive = TRUE,
+           showWarnings = FALSE)
+```
+
+# Load time-series results
+
+```{r}
+res <- read.csv(CONFIG$results_csv, stringsAsFactors = FALSE,
+                check.names = FALSE)
+cat(CONFIG$tissue, "time-series rows loaded:", nrow(res), "\n")
+
+stopifnot("Symbol" %in% colnames(res),
+          "Cluster" %in% colnames(res),
+          all(paste0("logFC_", CONFIG$contrasts) %in% colnames(res)),
+          all(paste0("FDR_",   CONFIG$contrasts) %in% colnames(res)))
+```
+
+# BioMart: map Symbol -> Entrez
+
+```{r}
+
+mart_finch <- useEnsembl(
+  biomart = "ensembl",
+  dataset = CONFIG$biomart_dataset,
+  version = CONFIG$biomart_version
+)
+
+all_symbols <- unique(res$Symbol)
+cat("Unique symbols to map:", length(all_symbols), "\n\n")
+
+map_ZF <- getBM(
+  attributes = c("external_gene_name", "entrezgene_id"),
+  filters    = "external_gene_name",
+  values     = all_symbols,
+  mart       = mart_finch
+)
+
+res$Entrez <- map_ZF$entrezgene_id[match(res$Symbol, map_ZF$external_gene_name)]
+
+cat("Mapping results:\n")
+cat("  Total genes:", nrow(res), "\n")
+cat("  With Entrez IDs:", sum(!is.na(res$Entrez)), "\n")
+cat("  Success rate:", round(sum(!is.na(res$Entrez)) / nrow(res) * 100, 1),
+    "%\n\n")
+```
+
+# AnnotationHub: fetch the NCBI-built OrgDb for Taeniopygia guttata
+
+```{r}
+
+ah <- AnnotationHub()
+zf_orgdb_hits <- query(ah, c("OrgDb", "Taeniopygia guttata"))
+print(zf_orgdb_hits)
+
+orgdb_ZF <- zf_orgdb_hits[[length(zf_orgdb_hits)]]
+
+cat("Available keytypes:\n")
+print(keytypes(orgdb_ZF))
+```
+
+# Gene-set collections used across contrasts (Hallmark, MitoCarta)
+
+```{r}
+hallmark <- msigdbr(species = "Homo sapiens", category = "H")
+hallmark_df <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol) %>%
+  dplyr::distinct()
+
+mc <- readxl::read_excel(CONFIG$mitocarta_xls,
+                         sheet = "A Human MitoCarta3.0")
+
+mitocarta_paths <- mc %>%
+  dplyr::filter(MitoCarta3.0_MitoPathways != "0") %>%
+  dplyr::select(Symbol, MitoCarta3.0_MitoPathways) %>%
+  tidyr::separate_rows(MitoCarta3.0_MitoPathways, sep = "\\s*\\|\\s*") %>%
+  dplyr::mutate(gs_name = trimws(sub(".*>\\s*", "", MitoCarta3.0_MitoPathways))) %>%
+  dplyr::select(gs_name, gene_symbol = Symbol) %>%
+  dplyr::distinct()
+
+mitocarta_df <- dplyr::bind_rows(
+  mitocarta_paths,
+  data.frame(gs_name = "MITOCARTA_ALL", gene_symbol = unique(mc$Symbol))
+)
+
+cat("MitoCarta genes:", length(unique(mc$Symbol)),
+    "| pathway terms:", length(unique(mitocarta_paths$gs_name)), "\n")
+```
+
+# Ranked-list builder: sign(logFC) * -log10(FDR), Inf-guarded
+
+```{r}
+
+make_rank <- function(df, contrast, id_col) {
+  lfc <- df[[paste0("logFC_", contrast)]]
+  fdr <- df[[paste0("FDR_",   contrast)]]
+
+  ## Guard against FDR == 0 producing Inf ranks
+  fdr_min <- min(fdr[fdr > 0], na.rm = TRUE)
+  fdr     <- pmax(fdr, fdr_min / 10)
+
+  rk  <- sign(lfc) * -log10(fdr)
+  ids <- as.character(df[[id_col]])
+
+  keep <- !is.na(rk) & !is.na(ids) & ids != ""
+  gl   <- setNames(rk[keep], ids[keep])
+  gl   <- gl[!duplicated(names(gl))]
+  sort(gl, decreasing = TRUE)
+}
+```
+
+# GSEA helpers (one call per contrast)
+
+```{r}
+
+save_gsea <- function(res_obj, out_dir, file_stub, title) {
+  if (is.null(res_obj) || nrow(res_obj@result) == 0) {
+    cat("  No significant sets for", file_stub, "\n\n")
+    return(invisible(NULL))
+  }
+  cat("  \u2713 Found", nrow(res_obj@result), "sets for", file_stub, "\n\n")
+
+  write.csv(res_obj@result,
+            file.path(out_dir, paste0(file_stub, ".csv")),
+            row.names = FALSE)
+
+  p <- enrichplot::dotplot(res_obj, showCategory = 20, split = ".sign",
+                           title = title) +
+    ggplot2::facet_grid(. ~ .sign,
+      labeller = ggplot2::labeller(.sign = c(activated  = "Up",
+                                             suppressed = "Down")))
+
+  ggplot2::ggsave(file.path(out_dir, paste0(file_stub, ".png")),
+                  p, width = 14, height = 10, dpi = 300)
+  print(p)
+  invisible(res_obj)
+}
+
+run_contrast_gsea <- function(contrast) {
+
+  out_dir <- file.path(CONFIG$out_root, contrast)
+  cat("### GSEA:", CONFIG$tissue, contrast, "###\n")
+
+  gl_entrez <- make_rank(res, contrast, "Entrez")
+  gl_symbol <- make_rank(res, contrast, "Symbol")
+  cat("  Ranked genes (Entrez):", length(gl_entrez),
+      "| (Symbol):", length(gl_symbol), "\n\n")
+
+  ## KEGG
+  gk <- gseKEGG(gl_entrez,
+                organism     = CONFIG$kegg_organism,
+                pvalueCutoff = CONFIG$pvalue_cutoff,
+                verbose      = FALSE)
+  save_gsea(gk, out_dir, paste0("GSE_KEGG_", contrast),
+            paste(CONFIG$tissue, contrast, "GSEA KEGG"))
+
+  ## GO (BP / MF / CC, combined with patchwork)
+  go_plots <- list()
+  for (ont in CONFIG$go_ontologies) {
+    gg <- gseGO(gl_symbol,
+                OrgDb        = orgdb_ZF,
+                keyType      = CONFIG$go_key_type,
+                ont          = ont,
+                minGSSize    = CONFIG$go_min_gs,
+                maxGSSize    = CONFIG$go_max_gs,
+                pvalueCutoff = CONFIG$pvalue_cutoff,
+                verbose      = FALSE)
+    if (!is.null(gg) && nrow(gg@result) > 0) {
+      cat("  \u2713 Found", nrow(gg@result), ont, "terms\n")
+      write.csv(gg@result,
+                file.path(out_dir, paste0("GO_GSEA_", contrast, "_", ont, ".csv")),
+                row.names = FALSE)
+      go_plots[[ont]] <- dotplot(gg, showCategory = CONFIG$go_show_cat,
+                                 split = ".sign",
+                                 title = paste0(contrast, " - ", ont)) +
+        facet_grid(. ~ .sign,
+          labeller = labeller(.sign = c(activated  = "Up",
+                                        suppressed = "Down")))
+    } else {
+      cat("  No significant", ont, "terms.\n")
+    }
+  }
+  if (length(go_plots) > 0) {
+    combined_go <- wrap_plots(go_plots, ncol = 1) +
+      plot_annotation(title = paste(CONFIG$tissue, contrast,
+                                    "GO GSEA — BP / MF / CC"))
+    ggsave(file.path(out_dir, paste0("GO_GSEA_", contrast, "_combined.png")),
+           combined_go, width = 14, height = 8 * length(go_plots), dpi = 300)
+    print(combined_go)
+  }
+
+  ## MSigDB Hallmark
+  gh <- GSEA(geneList     = gl_symbol,
+             TERM2GENE    = hallmark_df,
+             minGSSize    = 10,
+             maxGSSize    = 500,
+             pvalueCutoff = CONFIG$pvalue_cutoff,
+             verbose      = FALSE)
+  save_gsea(gh, out_dir, paste0("GSEA_MSigDB_", contrast),
+            paste(CONFIG$tissue, contrast, "GSEA MSigDB Hallmark"))
+
+  ## MitoCarta
+  gm <- GSEA(geneList     = gl_symbol,
+             TERM2GENE    = mitocarta_df,
+             minGSSize    = 3,
+             maxGSSize    = 500,
+             pvalueCutoff = CONFIG$pvalue_cutoff,
+             verbose      = FALSE)
+  save_gsea(gm, out_dir, paste0("GSEA_MitoCarta_", contrast),
+            paste(CONFIG$tissue, contrast, "GSEA MitoCarta3.0"))
+
+  invisible(NULL)
+}
+```
+
+### GSEA: all contrasts ###
+
+```{r, fig.width = 14, fig.height = 10}
+for (cn in CONFIG$contrasts) run_contrast_gsea(cn)
+```
+
+# ORA per temporal cluster
+
+# Cluster membership comes from the timecourse script's k-means (Cluster
+# column, NA for non-significant genes). Universe = all tested genes, so the
+# background matches the filterByExpr-retained set rather than the whole
+# genome annotation.
+
+```{r}
+cluster_symbols <- lapply(seq_len(CONFIG$n_clusters), function(k) {
+  unique(na.omit(res$Symbol[res$Cluster %in% k & res$Symbol != ""]))
+})
+names(cluster_symbols) <- paste0("Cluster_", seq_len(CONFIG$n_clusters))
+
+cluster_entrez <- lapply(seq_len(CONFIG$n_clusters), function(k) {
+  unique(na.omit(as.character(res$Entrez[res$Cluster %in% k])))
+})
+names(cluster_entrez) <- names(cluster_symbols)
+
+print(lengths(cluster_symbols))
+
+universe_symbol <- unique(res$Symbol[!is.na(res$Symbol) & res$Symbol != ""])
+universe_entrez <- unique(na.omit(as.character(res$Entrez)))
+cat("Universe:", length(universe_symbol), "symbols |",
+    length(universe_entrez), "Entrez\n")
+
+cluster_symbols <- cluster_symbols[lengths(cluster_symbols) >= 10]
+cluster_entrez  <- cluster_entrez[lengths(cluster_entrez)  >= 10]
+```
+
+### ORA GO per cluster ###
+
+```{r, fig.width = 12, fig.height = 10}
+for (ont in CONFIG$go_ontologies) {
+  cat("### ORA GO:", CONFIG$tissue, "clusters -", ont, "###\n")
+
+  go_cc <- compareCluster(
+    geneCluster  = cluster_symbols,
+    fun          = "enrichGO",
+    OrgDb        = orgdb_ZF,
+    keyType      = CONFIG$go_key_type,
+    ont          = ont,
+    universe     = universe_symbol,
+    minGSSize    = CONFIG$go_min_gs,
+    maxGSSize    = CONFIG$go_max_gs,
+    pvalueCutoff = CONFIG$pvalue_cutoff
+  )
+
+  if (!is.null(go_cc) && nrow(go_cc@compareClusterResult) > 0) {
+    cat("  \u2713 Found", nrow(go_cc@compareClusterResult), ont, "rows\n\n")
+
+    write.csv(go_cc@compareClusterResult,
+              file.path(CONFIG$out_root, "Clusters",
+                        paste0("ORA_GO_Clusters_", ont, ".csv")),
+              row.names = FALSE)
+
+    p <- dotplot(go_cc, showCategory = CONFIG$go_show_cat) +
+      labs(title = paste(CONFIG$tissue, "temporal clusters — GO", ont))
+
+    ggsave(file.path(CONFIG$out_root, "Clusters",
+                     paste0("ORA_GO_Clusters_", ont, ".png")),
+           p, width = 12, height = 10, dpi = 300)
+    print(p)
+  } else {
+    cat("  No significant", ont, "terms across clusters.\n\n")
+  }
+}
+```
+
+### ORA KEGG per cluster ###
+
+```{r, fig.width = 12, fig.height = 10}
+cat("### ORA KEGG:", CONFIG$tissue, "clusters ###\n")
+
+kegg_cc <- compareCluster(
+  geneCluster  = cluster_entrez,
+  fun          = "enrichKEGG",
+  organism     = CONFIG$kegg_organism,
+  universe     = universe_entrez,
+  pvalueCutoff = CONFIG$pvalue_cutoff
+)
+
+if (!is.null(kegg_cc) && nrow(kegg_cc@compareClusterResult) > 0) {
+  cat("  \u2713 Found", nrow(kegg_cc@compareClusterResult), "rows\n\n")
+
+  write.csv(kegg_cc@compareClusterResult,
+            file.path(CONFIG$out_root, "Clusters", "ORA_KEGG_Clusters.csv"),
+            row.names = FALSE)
+
+  p <- dotplot(kegg_cc, showCategory = CONFIG$go_show_cat) +
+    labs(title = paste(CONFIG$tissue, "temporal clusters — KEGG"))
+
+  ggsave(file.path(CONFIG$out_root, "Clusters", "ORA_KEGG_Clusters.png"),
+         p, width = 12, height = 10, dpi = 300)
+  print(p)
+} else {
+  cat("  No significant KEGG pathways across clusters.\n\n")
+}
+```
+
+### ORA MSigDB Hallmark per cluster ###
+
+```{r, fig.width = 12, fig.height = 10}
+cat("### ORA Hallmark:", CONFIG$tissue, "clusters ###\n")
+
+hall_cc <- compareCluster(
+  geneCluster  = cluster_symbols,
+  fun          = "enricher",
+  TERM2GENE    = hallmark_df,
+  universe     = universe_symbol,
+  pvalueCutoff = CONFIG$pvalue_cutoff
+)
+
+if (!is.null(hall_cc) && nrow(hall_cc@compareClusterResult) > 0) {
+  cat("  \u2713 Found", nrow(hall_cc@compareClusterResult), "rows\n\n")
+
+  write.csv(hall_cc@compareClusterResult,
+            file.path(CONFIG$out_root, "Clusters", "ORA_MSigDB_Clusters.csv"),
+            row.names = FALSE)
+
+  p <- dotplot(hall_cc, showCategory = CONFIG$go_show_cat, font.size = 12) +
+    scale_color_gradient(low = "#2c7bb6", high = "#d7191c") +
+    scale_size(range = c(3, 8)) +
+    labs(title = paste(CONFIG$tissue, "temporal clusters — MSigDB Hallmark"),
+         x = "Gene Ratio", y = NULL) +
+    theme_bw(base_size = 12) +
+    theme(strip.text = element_text(size = 12, face = "bold"),
+          axis.text.y = element_text(size = 10),
+          panel.grid.minor = element_blank())
+
+  ggsave(file.path(CONFIG$out_root, "Clusters", "ORA_MSigDB_Clusters.png"),
+         p, width = 12, height = 10, dpi = 300)
+  print(p)
+} else {
+  cat("  No significant Hallmark sets across clusters.\n\n")
+}
+```
+
+```{r}
+sessionInfo()
+```
