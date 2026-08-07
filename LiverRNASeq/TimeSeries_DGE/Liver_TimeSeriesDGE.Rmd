@@ -1,0 +1,409 @@
+---
+title: "Liver Time-Series DGE — Female A–E Timecourse"
+author: "Ali Amer"
+date: "2026-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Setup
+
+```{r libraries}
+rm(list = ls(all = TRUE))
+getwd()
+
+library(edgeR)
+library(limma)
+library(splines)
+library(ggplot2)
+```
+
+# CONFIG
+
+```{r config}
+CONFIG <- list(
+  counts_file     = "ZF_Liver_rawgene_count_matrix.csv",
+  master_file     = "AHDB_Exp1_MasterSpreadSheet.csv",
+  samplelist_file = "ZF_Liver_sample_list.csv",
+  out_dir         = "Results/Timeseries/Liver_Female/",
+
+  sex_levels      = "F",            
+  outlier_bands   = numeric(0),     # none removed yet
+  expected_n      = 50,             # 10 females x 5 groups, no removals
+  min_n_per_group = 9,
+
+  ## Hours since the START of heat exposure. Control anchored at 0.
+  ## EDIT heat_duration_h to the actual exposure length.
+  heat_duration_h = 5,
+  time_map        = NULL,           # filled below
+
+  spline_df       = 3,              # 3 df on 5 timepoints (4 df available)
+  fdr_cut         = 0.05,
+  n_clusters      = 6,
+  seed            = 1234
+)
+
+CONFIG$time_map <- c(
+  A = 0,
+  B = CONFIG$heat_duration_h,
+  C = CONFIG$heat_duration_h + 2,
+  D = CONFIG$heat_duration_h + 24,
+  E = CONFIG$heat_duration_h + 24 * 14
+)
+
+## Labels for plots and output only — NOT used in makeContrasts (hyphens would
+## be parsed as subtraction).
+CONFIG$treat_labels <- c(
+  A = "Control", B = "Heat", C = "Heat_2-HR_Repair",
+  D = "Heat_24-HR_Repair", E = "Heat_2-WK_Repair"
+)
+
+dir.create(CONFIG$out_dir, recursive = TRUE, showWarnings = FALSE)
+set.seed(CONFIG$seed)
+```
+
+# Load data and build metadata
+
+The master spreadsheet is long-format (one row per bird per blood-draw
+occasion), so `ID_Band` repeats. Dropping the Baseline and Heat draw occasions
+leaves exactly one row per bird — a row filter, not a collapse, so no values are
+silently discarded.
+
+```{r load-metadata}
+Raw_Counts           <- utils::read.csv(CONFIG$counts_file, row.names = 1,
+                                        check.names = FALSE)
+MasterSpreadsheet    <- utils::read.csv(CONFIG$master_file, check.names = TRUE)
+ZF_Liver_sample_list <- utils::read.csv(CONFIG$samplelist_file, check.names = TRUE)
+
+## Numeric band ID from Sample_ID (ZF_4529 -> 4529)
+ZF_Liver_sample_list$ID_Band <- as.numeric(
+  sub("^ZF_", "", ZF_Liver_sample_list$Sample_ID)
+)
+stopifnot(!anyNA(ZF_Liver_sample_list$ID_Band),
+          !any(duplicated(ZF_Liver_sample_list$ID_Band)),
+          !any(duplicated(ZF_Liver_sample_list$RNAseq_Sample_ID)))
+
+## Subset master to sequenced birds, then drop the extra draw occasions.
+## subset() drops NA rows silently, so confirm no bird is lost.
+meta <- MasterSpreadsheet[
+  MasterSpreadsheet$ID_Band %in% ZF_Liver_sample_list$ID_Band, ]
+bands_before <- unique(meta$ID_Band)
+
+meta <- subset(meta, TimePoint != "Baseline" & TimePoint != "Heat")
+
+lost_bands <- setdiff(bands_before, meta$ID_Band)
+if (length(lost_bands)) {
+  stop("Birds lost by the TimePoint filter (check for NA TimePoint): ",
+       paste(lost_bands, collapse = ", "))
+}
+stopifnot(!any(duplicated(meta$ID_Band)))
+
+## Attach the RNAseq sample IDs
+meta <- merge(meta, ZF_Liver_sample_list[, c("ID_Band", "RNAseq_Sample_ID")],
+              by = "ID_Band", all.x = TRUE)
+stopifnot(!anyNA(meta$RNAseq_Sample_ID))
+
+cat("Sex values (full master):\n"); print(table(MasterSpreadsheet$Sex, useNA = "ifany"))
+cat("\nTreatment x Sex (sequenced birds, one row each):\n")
+print(table(meta$Treatment, meta$Sex, useNA = "ifany"))
+```
+
+# Check count-matrix alignment
+
+
+```{r check-alignment}
+
+missing_cols <- setdiff(meta$RNAseq_Sample_ID, colnames(Raw_Counts))
+extra_cols   <- setdiff(colnames(Raw_Counts), meta$RNAseq_Sample_ID)
+
+cat("Count matrix columns:", ncol(Raw_Counts),
+    "| Metadata rows:", nrow(meta), "\n")
+cat("Count colnames (first 6):\n"); print(utils::head(colnames(Raw_Counts), 6))
+cat("Sample list IDs (first 6):\n")
+print(utils::head(ZF_Liver_sample_list$RNAseq_Sample_ID, 6))
+cat("\nIn metadata but NOT in counts (", length(missing_cols), "):\n", sep = "")
+print(missing_cols)
+cat("In counts but not in metadata (", length(extra_cols), "):\n", sep = "")
+print(extra_cols)
+
+if (length(missing_cols)) {
+  stop("RNAseq_Sample_IDs absent from the count matrix (", length(missing_cols),
+       "). Reconcile the naming convention in ", CONFIG$samplelist_file,
+       " against colnames(Raw_Counts) — fix it on the sample-list side so one ",
+       "authoritative mapping remains.")
+}
+```
+
+`extra_cols` being non-empty is expected and harmless — the count matrix holds
+all 70 liver samples, while the metadata here is the female A–E subset.
+
+```{r filter-samples}
+stopifnot(all(CONFIG$sex_levels %in% unique(meta$Sex)))
+if (length(CONFIG$outlier_bands)) {
+  stopifnot(all(CONFIG$outlier_bands %in% meta$ID_Band))
+}
+
+meta <- meta[meta$Sex %in% CONFIG$sex_levels &
+             meta$Treatment %in% names(CONFIG$time_map) &
+             !(meta$ID_Band %in% CONFIG$outlier_bands), ]
+rownames(meta) <- meta$RNAseq_Sample_ID
+
+counts <- Raw_Counts[, rownames(meta), drop = FALSE]
+stopifnot(identical(colnames(counts), rownames(meta)))
+
+meta$Treatment <- factor(meta$Treatment, levels = names(CONFIG$time_map))
+meta$Hours     <- CONFIG$time_map[as.character(meta$Treatment)]
+meta$TimeVar   <- log1p(meta$Hours)   # log-spaced: hours to weeks in one design
+
+print(table(meta$Treatment))
+cat("Samples retained:", nrow(meta), "\n")
+stopifnot(all(table(meta$Treatment) >= CONFIG$min_n_per_group),
+          nrow(meta) == CONFIG$expected_n)
+```
+
+# Filter and TMM normalize
+
+```{r normalize}
+## DGEList cbinds `samples` onto its own group/lib.size/norm.factors columns,
+## so guard against a name collision before it silently overwrites them.
+stopifnot(!any(c("group", "lib.size", "norm.factors") %in% colnames(meta)))
+
+dge <- edgeR::DGEList(counts = counts, samples = meta, group = meta$Treatment)
+keep_genes <- edgeR::filterByExpr(dge, group = dge$samples$group)
+dge <- dge[keep_genes, , keep.lib.sizes = FALSE]
+dge <- edgeR::calcNormFactors(dge, method = "TMM")
+cat("Genes retained:", nrow(dge), "| Samples:", ncol(dge), "\n")
+
+logcpm <- edgeR::cpm(dge, log = TRUE, prior.count = 2)
+```
+
+# QC: PCA with candidate outliers labelled
+
+Birds 4531 and 4817 are flagged rather than removed. Check whether they sit
+apart from their own treatment group before deciding.
+
+```{r pca, fig.width = 7, fig.height = 5}
+pca <- stats::prcomp(t(logcpm), center = TRUE, scale. = FALSE)
+n_pc <- min(5, ncol(pca$x))
+pct  <- round(100 * summary(pca)$importance[2, 1:2], 1)
+
+pca_df <- data.frame(
+  PC1       = pca$x[, 1],
+  PC2       = pca$x[, 2],
+  Treatment = dge$samples$group,
+  Band      = dge$samples$ID_Band
+)
+pca_df$Flag <- ifelse(pca_df$Band %in% c(4531, 4817),
+                      as.character(pca_df$Band), NA_character_)
+
+p_pca <- ggplot2::ggplot(pca_df, ggplot2::aes(PC1, PC2, colour = Treatment)) +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::stat_ellipse(type = "norm", linewidth = 0.4, na.rm = TRUE) +
+  ggplot2::geom_text(ggplot2::aes(label = Flag), colour = "black",
+                     vjust = -1.1, size = 3, na.rm = TRUE) +
+  ggplot2::labs(x = paste0("PC1 (", pct[1], "%)"),
+                y = paste0("PC2 (", pct[2], "%)"),
+                title = "Liver, female timecourse (candidate outliers labelled)") +
+  ggplot2::theme_bw()
+p_pca
+
+ggplot2::ggsave(file.path(CONFIG$out_dir, "PCA_timecourse_with_outliers.png"),
+                p_pca, width = 7, height = 5, dpi = 300)
+```
+
+```{r centroid-distance}
+## Distance from each sample to its own treatment-group centroid across the
+## first n_pc components — a numeric companion to the visual check.
+scores <- pca$x[, seq_len(n_pc), drop = FALSE]
+grp    <- as.character(dge$samples$group)
+
+centroids <- t(vapply(split(seq_len(nrow(scores)), grp),
+                      function(idx) colMeans(scores[idx, , drop = FALSE]),
+                      numeric(n_pc)))
+
+d_cent <- sqrt(rowSums((scores - centroids[grp, , drop = FALSE])^2))
+
+dist_tab <- data.frame(
+  Sample    = rownames(scores),
+  Band      = dge$samples$ID_Band,
+  Treatment = dge$samples$group,
+  DistToCentroid = round(d_cent, 2)
+)
+dist_tab <- dist_tab[order(-dist_tab$DistToCentroid), ]
+print(utils::head(dist_tab, 10))
+
+utils::write.csv(dist_tab,
+                 file.path(CONFIG$out_dir, "PCA_centroid_distances.csv"),
+                 row.names = FALSE)
+```
+
+# Spline time-series model
+
+Omnibus test per gene: does expression change smoothly with time in any way?
+No logFC is reported because this is not a single comparison.
+
+```{r spline-model}
+spl <- splines::ns(dge$samples$TimeVar, df = CONFIG$spline_df)
+design_spline <- stats::model.matrix(~ spl)
+colnames(design_spline) <- c("Intercept",
+                             paste0("spl", seq_len(CONFIG$spline_df)))
+stopifnot(qr(design_spline)$rank == ncol(design_spline))
+
+dge <- edgeR::estimateDisp(dge, design_spline, robust = TRUE)
+fit_spline <- edgeR::glmQLFit(dge, design_spline, robust = TRUE)
+qlf_spline <- edgeR::glmQLFTest(fit_spline, coef = 2:(CONFIG$spline_df + 1))
+
+res_spline <- edgeR::topTags(qlf_spline, n = Inf, sort.by = "none")$table
+cat("Spline-significant genes (FDR <", CONFIG$fdr_cut, "):",
+    sum(res_spline$FDR < CONFIG$fdr_cut), "\n")
+```
+
+# Cross-check: factor-based ANODEV
+
+With 5 discrete groups the spline (3 df) is a constrained version of the full
+factor model (4 df). Large disagreement means the smoothness assumption is doing
+work worth reporting.
+
+```{r factor-anodev}
+grp_factor <- dge$samples$group
+design_grp <- stats::model.matrix(~ grp_factor)
+colnames(design_grp) <- gsub("^grp_factor", "", colnames(design_grp))
+
+dge_grp <- edgeR::estimateDisp(dge, design_grp, robust = TRUE)
+fit_grp <- edgeR::glmQLFit(dge_grp, design_grp, robust = TRUE)
+qlf_grp <- edgeR::glmQLFTest(fit_grp, coef = 2:ncol(design_grp))
+res_grp <- edgeR::topTags(qlf_grp, n = Inf, sort.by = "none")$table
+
+stopifnot(setequal(rownames(res_grp), rownames(res_spline)))
+overlap <- table(
+  spline = res_spline$FDR < CONFIG$fdr_cut,
+  factor = res_grp[rownames(res_spline), "FDR"] < CONFIG$fdr_cut
+)
+print(overlap)
+```
+
+# Adjacent-timepoint contrasts
+
+Locates where along the trajectory the change occurs. Level names stay as A–E
+here so `makeContrasts` can parse them.
+
+```{r contrasts}
+design_0 <- stats::model.matrix(~ 0 + grp_factor)
+colnames(design_0) <- levels(grp_factor)
+dge_0 <- edgeR::estimateDisp(dge, design_0, robust = TRUE)
+fit_0 <- edgeR::glmQLFit(dge_0, design_0, robust = TRUE)
+
+con <- limma::makeContrasts(
+  Heat_vs_Control   = B - A,
+  Rec2h_vs_Heat     = C - B,
+  Rec24h_vs_Rec2h   = D - C,
+  Rec2wk_vs_Rec24h  = E - D,
+  Rec2wk_vs_Control = E - A,
+  levels = design_0
+)
+
+step_res <- lapply(colnames(con), function(cn) {
+  tt <- edgeR::topTags(edgeR::glmQLFTest(fit_0, contrast = con[, cn]),
+                       n = Inf, sort.by = "none")$table
+  data.frame(logFC = tt$logFC, FDR = tt$FDR, row.names = rownames(tt))
+})
+names(step_res) <- colnames(con)
+
+step_tab <- do.call(cbind, lapply(names(step_res), function(cn) {
+  x <- step_res[[cn]][rownames(res_spline), , drop = FALSE]
+  stats::setNames(x, paste0(c("logFC_", "FDR_"), cn))
+}))
+stopifnot(nrow(step_tab) == nrow(res_spline))
+
+print(vapply(step_res, function(x) sum(x$FDR < CONFIG$fdr_cut), numeric(1)))
+```
+
+# Trajectory clustering
+
+Groups significant genes by response *shape* rather than direction, so
+"spiked and recovered" and "spiked and stayed up" do not share a gene list.
+
+```{r clustering, fig.width = 9, fig.height = 6}
+sig_genes <- rownames(res_spline)[res_spline$FDR < CONFIG$fdr_cut]
+stopifnot(length(sig_genes) > CONFIG$n_clusters)
+
+grp_means <- t(apply(logcpm[sig_genes, , drop = FALSE], 1, function(y)
+  tapply(y, dge$samples$group, mean)))
+grp_z <- t(scale(t(grp_means)))
+grp_z <- grp_z[stats::complete.cases(grp_z), , drop = FALSE]
+cat("Genes clustered:", nrow(grp_z), "of", length(sig_genes), "significant\n")
+
+km <- stats::kmeans(grp_z, centers = CONFIG$n_clusters,
+                    nstart = 50, iter.max = 100)
+
+clust_df <- do.call(rbind, lapply(seq_len(CONFIG$n_clusters), function(k) {
+  m  <- grp_z[km$cluster == k, , drop = FALSE]
+  se <- if (nrow(m) > 1) {
+    apply(m, 2, function(v) stats::sd(v) / sqrt(length(v)))
+  } else {
+    rep(0, ncol(m))          # single-gene cluster: no spread to show
+  }
+  data.frame(
+    Treatment = factor(CONFIG$treat_labels[colnames(grp_z)],
+                       levels = CONFIG$treat_labels),
+    Mean      = colMeans(m),
+    SE        = se,
+    Cluster   = paste0("Cluster ", k, " (n=", nrow(m), ")")
+  )
+}))
+
+p_clust <- ggplot2::ggplot(clust_df, ggplot2::aes(Treatment, Mean, group = 1)) +
+  ggplot2::geom_hline(yintercept = 0, linetype = 2, colour = "grey60") +
+  ggplot2::geom_ribbon(ggplot2::aes(ymin = Mean - SE, ymax = Mean + SE),
+                       fill = "steelblue", alpha = 0.25) +
+  ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
+  ggplot2::geom_point(colour = "steelblue", size = 2) +
+  ggplot2::facet_wrap(~ Cluster, scales = "free_y") +
+  ggplot2::labs(x = NULL, y = "z-scored mean logCPM") +
+  ggplot2::theme_bw() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+p_clust
+
+ggplot2::ggsave(file.path(CONFIG$out_dir, "Trajectory_clusters.png"),
+                p_clust, width = 9, height = 6, dpi = 300)
+```
+
+# Outputs
+
+```{r outputs}
+out <- data.frame(
+  GeneID        = rownames(res_spline),
+  Symbol        = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(res_spline)),
+  logCPM        = res_spline$logCPM,
+  PValue_spline = res_spline$PValue,
+  FDR_spline    = res_spline$FDR,
+  FDR_factor    = res_grp[rownames(res_spline), "FDR"],
+  step_tab,
+  Cluster       = unname(km$cluster[rownames(res_spline)]),
+  row.names = NULL, check.names = FALSE
+)
+out <- out[order(out$FDR_spline), ]
+
+utils::write.csv(out,
+                 file.path(CONFIG$out_dir, "Timeseries_spline_results.csv"),
+                 row.names = FALSE)
+
+grp_means_out <- as.data.frame(grp_means)
+colnames(grp_means_out) <- CONFIG$treat_labels[colnames(grp_means_out)]
+utils::write.csv(grp_means_out,
+                 file.path(CONFIG$out_dir, "Sig_gene_group_means_logCPM.csv"))
+
+## Per-cluster gene lists for downstream GSEA/GO (feed into Script 7)
+for (k in seq_len(CONFIG$n_clusters)) {
+  utils::write.csv(out[which(out$Cluster == k), c("GeneID", "Symbol")],
+                   file.path(CONFIG$out_dir, paste0("Cluster_", k, "_genes.csv")),
+                   row.names = FALSE)
+}
+```
+
+```{r session}
+sessionInfo()
+```
