@@ -842,6 +842,7 @@ p
 ### GSEA MSigDB - Interaction 
 
 ```{r}
+
 gene_list_int <- DEG_int_deseq %>%
   filter(!is.na(Symbol)) %>%                # Remove genes without Symbol
   arrange(desc(Rank)) %>%                   # Sort by decreasing ranking statistic
@@ -891,7 +892,6 @@ int_gsea_results <- as.data.frame(int_hallmark_gsea)
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
     )
-
 
   print(p_i)
   
@@ -983,8 +983,81 @@ p
   )
 ```
 
+# MitoCarta Databases
 
+# MitoCarta Dataset
 
+```{r}
+library(readxl)
+library(tidyr)
+
+## ---- Build TERM2GENE from MitoCarta3.0 ----
+mc <- readxl::read_excel("Human.MitoCarta3.0.xls",
+                         sheet = "A Human MitoCarta3.0")
+
+# MitoPathways: ">" nests levels, "|" separates multiple assignments per gene
+mitocarta_paths <- mc %>%
+  dplyr::filter(MitoCarta3.0_MitoPathways != "0") %>%
+  dplyr::select(Symbol, MitoCarta3.0_MitoPathways) %>%
+  tidyr::separate_rows(MitoCarta3.0_MitoPathways, sep = "\\s*\\|\\s*") %>%
+  dplyr::mutate(gs_name = trimws(sub(".*>\\s*", "", MitoCarta3.0_MitoPathways))) %>%
+  dplyr::select(gs_name, gene_symbol = Symbol) %>%
+  dplyr::distinct()
+
+mitocarta_df <- dplyr::bind_rows(
+  mitocarta_paths,
+  data.frame(gs_name = "MITOCARTA_ALL", gene_symbol = unique(mc$Symbol))
+)
+
+cat("MitoCarta genes:", length(unique(mc$Symbol)),
+    "| pathway terms:", length(unique(mitocarta_paths$gs_name)), "\n")
+
+## Checks how many ZEFI symbols are in MitoCarta
+cat("Finch symbols matching MitoCarta:",
+    length(intersect(names(gene_list_female_symbol), unique(mc$Symbol))), "\n")
+
+## GSEA helper 
+run_mitocarta_gsea <- function(gene_list, out_dir, label, up_lab, down_lab) {
+
+  res <- clusterProfiler::GSEA(
+    geneList     = gene_list,
+    TERM2GENE    = mitocarta_df,
+    minGSSize    = 3,          
+    maxGSSize    = 500,
+    pvalueCutoff = 0.05,
+    verbose      = FALSE
+  )
+
+  if (is.null(res) || nrow(res@result) == 0) {
+    cat("  No significant MitoCarta sets for", label, "\n\n")
+    return(invisible(NULL))
+  }
+  cat("  \u2713 Found", nrow(res@result), "sets for", label, "\n\n")
+
+  write.csv(as.data.frame(res),
+            file.path(out_dir, paste0("GSEA_MitoCarta_", label, ".csv")),
+            row.names = FALSE)
+
+  p <- enrichplot::dotplot(res, showCategory = 20, split = ".sign",
+                           title = paste(label, "GSEA MitoCarta3.0")) +
+    ggplot2::facet_grid(. ~ .sign,
+      labeller = ggplot2::labeller(.sign = c(activated = up_lab,
+                                             suppressed = down_lab)))
+
+  ggplot2::ggsave(file.path(out_dir, paste0("GSEA_MitoCarta_", label, ".png")),
+                  p, width = 14, height = 10, dpi = 300)
+  print(p)
+  invisible(res)
+}
+
+mito_male   <- run_mitocarta_gsea(gene_list_male_symbol,   CONFIG$out_dir_male,
+                                  "Male",        "Up in Heat", "Down in Heat")
+mito_female <- run_mitocarta_gsea(gene_list_female_symbol, CONFIG$out_dir_female,
+                                  "Female",      "Up in Heat", "Down in Heat")
+mito_int    <- run_mitocarta_gsea(gene_list_int_symbol,    CONFIG$out_dir_int,
+                                  "Interaction", "Up",         "Down")
+
+```
 # Load Data Files for WGCNA 
 
 # Built from the raw count matrix + Control/Heat pheno file, subset to Treatment A & B (Control/Heat) and split by sex. CORT is pulled in separately from the master spreadsheet, joined by bird ID extracted from the sample column names.
