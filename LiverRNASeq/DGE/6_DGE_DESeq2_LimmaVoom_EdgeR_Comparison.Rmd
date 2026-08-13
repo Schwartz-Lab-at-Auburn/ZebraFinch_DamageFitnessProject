@@ -884,3 +884,270 @@ upset(
 dev.off()
 ```
 
+# Make a heatmap with DESeq2 adjusted p-values < 0.05
+# Ordered Sex -> Treatment
+```{r}
+library(pheatmap)
+
+vsd_all <- vst(dds_interaction, blind = FALSE)
+
+vsd_mat <- assay(vsd_all)
+
+# Combine gene names
+sig_genes <- unique(c(
+  rownames(stringent_sig_male_deseq),
+  rownames(stringent_sig_female_deseq)
+))
+
+# Keep only genes present in your VST matrix
+sig_genes <- sig_genes[sig_genes %in% rownames(vsd_mat)]
+
+# Check how many genes are being plotted
+length(sig_genes)
+
+# Expression matrix containing BOTH males and females
+mat_sig <- vsd_mat[sig_genes, ]
+
+
+### Make the Heatmap
+# Scale each gene (row) to z-scores
+mat_scaled_sig <- t(scale(t(mat_sig)))
+
+# Optional sample annotation
+annotation_col <- data.frame(
+  Treatment = colData(vsd_all)$treatment,
+  Sex = colData(vsd_all)$sex
+)
+
+rownames(annotation_col) <- colnames(vsd_all)
+
+annotation_col <- annotation_col[colnames(mat_sig), , drop = FALSE]
+
+sample_order <- order(
+  annotation_col$Sex,
+  annotation_col$Treatment
+)
+
+# Reorder expression matrix
+mat_scaled_sig <- mat_scaled_sig[, sample_order]
+
+# Reorder annotation
+annotation_col <- annotation_col[sample_order, , drop = FALSE]
+
+annotation_colors <- list(
+  Sex = c(
+    male = "darkgreen",
+    female = "deeppink"
+  ),
+    Treatment = c(
+    Control = "gray70",
+    Heat = "orange"
+  )
+)
+
+
+# Heatmap
+pheatmap(
+  mat_scaled_sig,
+  
+  annotation_col = annotation_col,
+  annotation_colors = annotation_colors,
+  
+  cluster_rows = TRUE,
+  
+  # Do NOT cluster columns; preserve biological grouping
+  cluster_cols = FALSE,
+  
+  show_rownames = FALSE,
+  show_colnames = FALSE,
+  
+  fontsize_row = 8,
+  
+  border_color = NA,
+  
+  color = colorRampPalette(
+    c("#2166AC", "white", "#B2182B")
+  )(100),
+  
+  breaks = seq(-2.5, 2.5, length.out = 101)
+)
+```
+
+# Make a heatmap with DESeq2 adjusted p-values < 0.05
+# Ordered Treatment -> Sex
+```{r}
+library(pheatmap)
+
+vsd_all <- vst(dds_interaction, blind = FALSE)
+
+vsd_mat <- assay(vsd_all)
+
+# Combine gene names
+sig_genes <- unique(c(
+  rownames(stringent_sig_male_deseq),
+  rownames(stringent_sig_female_deseq)
+))
+
+# Keep only genes present in your VST matrix
+sig_genes <- sig_genes[sig_genes %in% rownames(vsd_mat)]
+
+# Check how many genes are being plotted
+length(sig_genes)
+
+# Expression matrix containing BOTH males and females
+mat_sig <- vsd_mat[sig_genes, ]
+
+
+### Make the Heatmap
+# Scale each gene (row) to z-scores
+mat_scaled_sig <- t(scale(t(mat_sig)))
+
+# Optional sample annotation
+annotation_col <- data.frame(
+  Treatment = colData(vsd_all)$treatment,
+  Sex = colData(vsd_all)$sex
+)
+
+rownames(annotation_col) <- colnames(vsd_all)
+
+annotation_col <- annotation_col[colnames(mat_sig), , drop = FALSE]
+
+sample_order <- order(
+  annotation_col$Treatment,
+  annotation_col$Sex
+)
+
+# Reorder expression matrix
+mat_scaled_sig <- mat_scaled_sig[, sample_order]
+
+# Reorder annotation
+annotation_col <- annotation_col[sample_order, , drop = FALSE]
+
+annotation_colors <- list(
+    Treatment = c(
+    Control = "gray70",
+    Heat = "orange"
+  ),
+    Sex = c(
+    male = "darkgreen",
+    female = "deeppink"
+  )
+)
+
+
+# Heatmap
+png("/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/LiverRNASeq/DGE/Liver_DGE_Heatmap.png", width = 6, height = 4, units = "in", res = 300)
+
+pheatmap(
+  mat_scaled_sig,
+  
+  annotation_col = annotation_col,
+  annotation_colors = annotation_colors,
+  
+  cluster_rows = TRUE,
+  
+  # Do NOT cluster columns; preserve biological grouping
+  cluster_cols = FALSE,
+  
+  show_rownames = FALSE,
+  show_colnames = FALSE,
+  
+  fontsize_row = 8,
+  
+  border_color = NA,
+  
+  color = colorRampPalette(
+    c("#2166AC", "white", "#B2182B")
+  )(100),
+  
+  breaks = seq(-2.5, 2.5, length.out = 101)
+)
+
+dev.off()
+```
+
+# Make a heatmap with DESeq2 adjusted p-values < 0.05 - Interaction Model
+# Ordered Treatment -> Sex
+```{r}
+library(pheatmap)
+
+vsd_all <- vst(dds_interaction, blind = FALSE)
+
+vsd_mat <- assay(vsd_all)
+
+# Combine gene names
+sig_genes <- rownames(stringent_sig_int_deseq)
+
+# Keep only genes present in your VST matrix
+sig_genes <- sig_genes[sig_genes %in% rownames(vsd_mat)]
+
+# Check how many genes are being plotted
+length(sig_genes)
+
+# Expression matrix containing BOTH males and females
+mat_sig <- vsd_mat[sig_genes, ]
+
+
+### Make the Heatmap
+# Scale each gene (row) to z-scores
+mat_scaled_sig <- t(scale(t(mat_sig)))
+
+# Optional sample annotation
+annotation_col <- data.frame(
+  Treatment = colData(vsd_all)$treatment,
+  Sex = colData(vsd_all)$sex
+)
+
+rownames(annotation_col) <- colnames(vsd_all)
+
+annotation_col <- annotation_col[colnames(mat_sig), , drop = FALSE]
+
+sample_order <- order(
+  annotation_col$Treatment,
+  annotation_col$Sex
+)
+
+# Reorder expression matrix
+mat_scaled_sig <- mat_scaled_sig[, sample_order]
+
+# Reorder annotation
+annotation_col <- annotation_col[sample_order, , drop = FALSE]
+
+annotation_colors <- list(
+    Treatment = c(
+    Control = "gray70",
+    Heat = "orange"
+  ),
+    Sex = c(
+    male = "darkgreen",
+    female = "deeppink"
+  )
+)
+
+
+# Heatmap
+pheatmap(
+  mat_scaled_sig,
+  
+  annotation_col = annotation_col,
+  annotation_colors = annotation_colors,
+  
+  cluster_rows = TRUE,
+  
+  # Do NOT cluster columns; preserve biological grouping
+  cluster_cols = FALSE,
+  
+  show_rownames = FALSE,
+  show_colnames = FALSE,
+  
+  fontsize_row = 8,
+  
+  border_color = NA,
+  
+  color = colorRampPalette(
+    c("#2166AC", "white", "#B2182B")
+  )(100),
+  
+  breaks = seq(-2.5, 2.5, length.out = 101)
+)
+```
