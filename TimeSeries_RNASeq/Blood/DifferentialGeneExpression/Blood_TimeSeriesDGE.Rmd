@@ -430,10 +430,10 @@ p_rev <- ggplot2::ggplot(rev_df, ggplot2::aes(Heat_LFC, Rec_LFC)) +
   ggplot2::theme_bw()
 p_rev
 
-ggplot2::ggsave(file.path(CONFIG$out_dir, "Reversal_scatter.png"),
+ggplot2::ggsave(file.path(CONFIG$out_dir, "scatter.png"),
                 p_rev, width = 10, height = 4, dpi = 300)
 utils::write.csv(slope_tab[, c("Panel", "Slope", "SE", "R2")],
-                 file.path(CONFIG$out_dir, "Reversal_slopes.csv"), row.names = FALSE)
+                 file.path(CONFIG$out_dir, "slopes.csv"), row.names = FALSE)
 ```
 
 #  trajectory clustering
