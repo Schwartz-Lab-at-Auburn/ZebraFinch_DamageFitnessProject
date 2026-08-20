@@ -5,16 +5,36 @@ date: "2026-08-07"
 output: html_document
 ---
 
+<!-- 
+SCRIPT Info:
+
+Differential expression across a five-point time-series, where the same
+individual can contribute more than one sample. Three questions, in order:
+
+  1.  does this gene change at all across the time-series?
+  
+This was done in two different ways: factor ANODEV and a spline
+                model 
+  2. where along the time-series does expression change?
+  
+This was done through adjacent-timepoint contrasts (B-A, C-B, D-C, E-D)
+                plus E-A as a "did it return to baseline?" test.
+                
+Repeated Measures: Blood was drawn more than once for recovey birds, so residuals are not independent. 
+Each model was fit with "(..., block = ID_Band) - to account for the repeated measures.
+
+-->
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
+# Libraries
 
 ```{r libraries}
 rm(list = ls(all = TRUE))
-getwd()
 
-library(edgeR)     
+library(edgeR)
 library(limma)
 library(splines)
 library(ggplot2)
@@ -24,243 +44,246 @@ library(ggplot2)
 
 ```{r config}
 CONFIG <- list(
-  counts_file     = "gene_count_matrix (3).csv",
-  master_file     = "AHDB_Exp1_MasterSpreadSheet.csv",
-  samplelist_file = "PHENO_DATA_AllBlood.txt",
+  counts_file     = "gene_count_matrix (3).csv", # Raw Count Data
+  master_file     = "AHDB_Exp1_MasterSpreadSheet.csv", # Kept to double check the pheno data file and make sure samples match
+  samplelist_file = "PHENO_DATA_AllBlood.txt", # Metadata File
   out_dir         = "Results",
 
-  sex_levels      = "F",
-  outlier_bands   = numeric(0),     # none removed yet
-  drop_ribofree   = TRUE,           # exclude _RiboFree library re-preps
+  drop_ribofree   = TRUE,           # exclude Ribo-free library re-preps
 
-  ## Which draw occasions to keep. B = Baseline (2 wk pre-heat),
-  ## D = terminal draw at the bird's timepoint, H = draw at heat exposure
-  ## (recovery birds).
-  keep_occasions  = c("B", "D", "H"),
+  ## Sample names are ZF_<band>_<occasion>_BL. Occasion is the timepoint blood was DRAWN, not the
+  ## treatment group:
+  ##   D = terminal draw at the bird's own assigned timepoint
+  ##   H = draw taken during heat exposure, from birds assigned to recover
+  keep_occasions  = c("D", "H"),
 
-  ## Hours since the START of heat exposure. Control anchored at 0.
+  ## If a listed sample is absent from the count matrix, FALSE drops it with a warning whereas TRUE stops the code from running further.
+  strict_alignment = FALSE,
+
+  ## Duration of heat exposure
   heat_duration_h = 5,
-  time_map        = NULL,           # filled below
+  time_map        = NULL,      # see below
 
-  spline_df       = 3,              # 3 df on 5 timepoints (4 df available)
-  fdr_cut         = 0.05,
+  ## Spline Model
+  spline_df       = 4,         #  DF -> 5 timepoints - 1 = 4
+  fdr_cut         = 0.05,      
+
+  ## For Cluster Analysis - Ignore for now (Need to think more on how to choose the appropriate number of clusters. Each cluster represents genes with similar expression patterns)
+  
+  do_clustering   = FALSE,
   n_clusters      = 6,
-  seed            = 1234
+
+  seed            = 1234 # Specified so seed doesn't change when running GSEA multiple times
 )
 
+## Hours since the START of heat exposure. Control set at 0.
 CONFIG$time_map <- c(
-  A = 0,
-  B = CONFIG$heat_duration_h,
-  C = CONFIG$heat_duration_h + 2,
-  D = CONFIG$heat_duration_h + 24,
-  E = CONFIG$heat_duration_h + 24 * 14
+  A = 0,                                # Control (never heated)
+  B = CONFIG$heat_duration_h,           # end of heat exposure
+  C = CONFIG$heat_duration_h + 2,       # +2 h recovery
+  D = CONFIG$heat_duration_h + 24,      # +24 h recovery
+  E = CONFIG$heat_duration_h + 24 * 14  # +2 wk recovery
 )
 
-## Labels for plots and output only — NOT used in makeContrasts (hyphens would
-## be parsed as subtraction). These match the pheno-file treatment strings.
+## Labels for Plots 
 CONFIG$treat_labels <- c(
-  A = "Control", B = "Heat", C = "Heat_2-HR_Repair",
-  D = "Heat_24-HR_Repair", E = "Heat_2-WK_Repair"
+  A = "Control",            B = "Heat",
+  C = "Heat_2-HR_Repair",   D = "Heat_24-HR_Repair",
+  E = "Heat_2-WK_Repair"
 )
 
 dir.create(CONFIG$out_dir, recursive = TRUE, showWarnings = FALSE)
 set.seed(CONFIG$seed)
 ```
 
-# Load data and build metadata
+# Load data and build the metadata table
 
-Occasion-to-group rules (group at the moment of the draw):
-
-* **B (Baseline)** — pre-exposure, pooled into group **A** at time 0.
-  Caveat: drawn ~2 wk before the Control terminal draws it is pooled with;
-  assumes no handling/batch difference between draw occasions.
-* **D** — the bird's own Treatment group (A–E) from the master spreadsheet.
-* **H** — taken at the heat exposure of recovery birds (2-HR, 24-HR, or
-  2-WK repair), pooled into group **B** at `heat_duration_h`.
+Three datafiles: 
+1. Count matrix (expression), 
+2. Pheno file (Treatment Information)
+3. Master Spreadsheet (Sanity Check for myself that samples are assigned to correct treatments by cross-referencing against the Pheno File)
 
 ```{r load-metadata}
-Raw_Counts        <- utils::read.csv(CONFIG$counts_file, row.names = 1,
-                                     check.names = FALSE)
-MasterSpreadsheet <- utils::read.csv(CONFIG$master_file, check.names = TRUE)
-pheno             <- utils::read.delim(CONFIG$samplelist_file,
-                                       check.names = TRUE,
-                                       stringsAsFactors = FALSE)
+
+Raw_Counts <- utils::read.csv(CONFIG$counts_file, row.names = 1,
+                              check.names = FALSE)
+pheno      <- read.delim(CONFIG$samplelist_file, check.names = TRUE,
+                                stringsAsFactors = FALSE)
+MasterSpreadsheet <- read.csv(CONFIG$master_file, check.names = TRUE)
+
 stopifnot(all(c("sample", "treatment") %in% colnames(pheno)),
           !any(duplicated(pheno$sample)))
 
-## Drop the RiboFree library re-preps (different chemistry = batch effect)
-is_ribofree <- grepl("_RiboFree$", pheno$sample)
-cat("RiboFree re-preps found:", sum(is_ribofree), "\n")
-if (CONFIG$drop_ribofree) pheno <- pheno[!is_ribofree, ]
+## Ribo-free preps are samples run through a different library kit. 
+if (CONFIG$drop_ribofree) {
+  is_ribofree <- grepl("_RiboFree$", pheno$sample)
+  cat("RiboFree re-preps dropped:", sum(is_ribofree), "\n")
+  pheno <- pheno[!is_ribofree, ]
+}
 
-## Parse band and draw occasion from the sample name (ZF_4531_B_BL)
+## Parse band ID and draw occasion out of the sample name. (ZF_4719_D_L; Band_ID = 4719, D: Dissection Timepoint)
+
 id_pat <- "^ZF_(\\d+)_([A-Z])_BL$"
 bad <- pheno$sample[!grepl(id_pat, pheno$sample)]
 if (length(bad)) {
   stop("Sample names not matching 'ZF_<band>_<occasion>_BL': ",
        paste(utils::head(bad, 10), collapse = ", "))
 }
-pheno$ID_Band  <- as.numeric(sub(id_pat, "\\1", pheno$sample))
-pheno$Occasion <- sub(id_pat, "\\2", pheno$sample)
-stopifnot(!anyNA(pheno$ID_Band),
-          all(pheno$Occasion %in% c("B", "D", "H")),
-          !any(duplicated(pheno[, c("ID_Band", "Occasion")])))
 
 meta <- data.frame(
   RNAseq_Sample_ID = pheno$sample,
-  ID_Band          = pheno$ID_Band,
-  Occasion         = pheno$Occasion,
+  ID_Band          = as.numeric(sub(id_pat, "\\1", pheno$sample)),
+  Occasion         = sub(id_pat, "\\2", pheno$sample),
   Pheno_Treatment  = pheno$treatment
 )
 
-## One bird-level Treatment/Sex row per band from the master (authoritative)
 bird_info <- unique(MasterSpreadsheet[, c("ID_Band", "Treatment", "Sex")])
 stopifnot(!any(duplicated(bird_info$ID_Band)))
 
 missing_birds <- setdiff(meta$ID_Band, bird_info$ID_Band)
 if (length(missing_birds)) {
-  stop("Bands in the pheno file but not in the master spreadsheet: ",
+  stop("Bands in the pheno file but not in the master: ",
        paste(missing_birds, collapse = ", "))
 }
 
 meta <- merge(meta, bird_info, by = "ID_Band", all.x = TRUE)
 stopifnot(!anyNA(meta$Treatment), !anyNA(meta$Sex))
 
-cat("Occasion x Treatment (all listed blood samples):\n")
-print(table(meta$Occasion, meta$Treatment, useNA = "ifany"))
-cat("\nOccasion x Sex:\n")
-print(table(meta$Occasion, meta$Sex, useNA = "ifany"))
+## Females only, D and H draws only. Drops the B (baseline) draws and all males.
+n_before <- nrow(meta)
+meta <- meta[meta$Sex == "F" & meta$Occasion %in% CONFIG$keep_occasions, ]
+cat("Dropped", n_before - nrow(meta), "rows (males + B draws);",
+    nrow(meta), "retained\n")
+
+cat("\nDraw occasion x assigned treatment group (all listed samples):\n")
+print(table(meta$Occasion, meta$Treatment))
+
+cat("\nDraw occasion x sex:\n")
+print(table(meta$Occasion, meta$Sex, meta$Pheno_Treatment))
 ```
 
-# Cross-check pheno treatment labels against the master
-
-The pheno `treatment` column encodes the state at the draw. Convert it to a
-letter and compare with what the occasion rules + master imply. Mismatches
-are printed and the master wins.
+# Cross-check the pheno treatment labels against the master
 
 ```{r treatment-crosscheck}
+
 lab <- sub("^Baseline \\(2 weeks prior to ", "", meta$Pheno_Treatment)
 lab <- sub("\\)$", "", lab)
 meta$Pheno_Letter <- names(CONFIG$treat_labels)[match(lab, CONFIG$treat_labels)]
-stopifnot(!anyNA(meta$Pheno_Letter))   # unmapped label string
+stopifnot(!anyNA(meta$Pheno_Letter))   # an unmapped label string
 
-## Expected letter per row: B/D rows should name the bird's Treatment
-## (for B it is the parenthetical "prior to <group>"); H rows should say Heat.
 expected <- ifelse(meta$Occasion == "H", "B", as.character(meta$Treatment))
-
 mismatch <- meta[meta$Pheno_Letter != expected,
-                 c("RNAseq_Sample_ID", "Occasion", "Pheno_Treatment",
-                   "Treatment")]
+                 c("RNAseq_Sample_ID", "Occasion", "Pheno_Treatment", "Treatment")]
+
 if (nrow(mismatch)) {
-  cat("Pheno/master treatment mismatches (master used):\n")
-  print(mismatch)
+  cat("Pheno/master mismatches — master used:\n"); print(mismatch)
 } else {
   cat("Pheno treatment labels consistent with the master.\n")
 }
+
+## limma and edgeR name the same quantities differently. This renames
+## topTable output to edgeR's column names so the downstream chunks are
+## identical to the liver script.
+
 ```
 
-# Check count-matrix alignment
+# Merge against the count matrix
 
 ```{r check-alignment}
+
 missing_cols <- setdiff(meta$RNAseq_Sample_ID, colnames(Raw_Counts))
 extra_cols   <- setdiff(colnames(Raw_Counts), meta$RNAseq_Sample_ID)
 
 cat("Count matrix columns:", ncol(Raw_Counts),
     "| Metadata rows:", nrow(meta), "\n")
-cat("\nIn metadata but NOT in counts (", length(missing_cols), "):\n", sep = "")
-print(missing_cols)
 cat("In counts but not in metadata (", length(extra_cols),
-    ", includes dropped RiboFree):\n", sep = "")
+    " — includes dropped RiboFree):\n", sep = "")
 print(extra_cols)
 
+# Sanity Check:
 if (length(missing_cols)) {
-  stop("RNAseq_Sample_IDs absent from the count matrix (", length(missing_cols),
-       "). Reconcile the naming convention in ", CONFIG$samplelist_file,
-       " against colnames(Raw_Counts).")
+  cat("\nListed but NOT in the count matrix (", length(missing_cols), "):\n",
+      sep = "")
+  print(missing_cols)
+  if (CONFIG$strict_alignment) {
+    stop("Reconcile the naming convention in ", CONFIG$samplelist_file,
+         " against colnames(Raw_Counts).")
+  }
+  ## ZF_4717 was never sent for sequencing.
+  meta <- meta[!meta$RNAseq_Sample_ID %in% missing_cols, ]
+  cat("Dropped (strict_alignment = FALSE).\n")
 }
 ```
 
-# Filter samples and assign groups
+# Filter sample draws into timepoint groups
 
-```{r filter-samples}
-stopifnot(all(CONFIG$sex_levels %in% unique(meta$Sex)),
-          all(CONFIG$keep_occasions %in% unique(meta$Occasion)))
-if (length(CONFIG$outlier_bands)) {
+An `H` draw was taken *during heat* from a bird assigned to
+recover later, so it belongs in the Heat group at 5 h; not in the group the
+bird was eventually killed in. Group B therefore contains two kinds of sample:
+the `D` draws of birds assigned to Heat, and the `H` draws of C/D/E birds.
+
+Note: A recovery bird contributes to group B
+*and* to its own group, so contrasts like C−B are part within-bird and part
+between-bird. `duplicateCorrelation` would handle this *I think..... Double check*
+
+```{r filter-pool}
+
+# Sanity Check: 
+stopifnot(all(CONFIG$keep_occasions %in% meta$Occasion))
+if (!is.null(CONFIG$outlier_bands)) {
   stopifnot(all(CONFIG$outlier_bands %in% meta$ID_Band))
 }
 
-meta <- meta[meta$Sex %in% CONFIG$sex_levels &
-             meta$Treatment %in% names(CONFIG$time_map) &
-             meta$Occasion %in% CONFIG$keep_occasions &
-             !(meta$ID_Band %in% CONFIG$outlier_bands), ]
+keep <- meta$Treatment %in% names(CONFIG$time_map)
+if (!is.null(CONFIG$outlier_bands)) keep <- keep & !meta$ID_Band %in% CONFIG$outlier_bands
+meta <- meta[keep, ]
 
-## H draws come from recovery birds (2-HR, 24-HR, or 2-WK repair)
 stopifnot(all(meta$Treatment[meta$Occasion == "H"] %in% c("C", "D", "E")))
 
-meta$Group <- ifelse(meta$Occasion == "B", "A",
-              ifelse(meta$Occasion == "H", "B",
-                     as.character(meta$Treatment)))
-meta$Group <- factor(meta$Group, levels = names(CONFIG$time_map))
+meta$Group <- factor(ifelse(meta$Occasion == "H", "B",
+                            as.character(meta$Treatment)),
+                     levels = names(CONFIG$time_map))
+
+meta$Hours   <- CONFIG$time_map[as.character(meta$Group)]
+meta$TimeVar <- log1p(meta$Hours)
 
 rownames(meta) <- meta$RNAseq_Sample_ID
 counts <- Raw_Counts[, rownames(meta), drop = FALSE]
-stopifnot(identical(colnames(counts), rownames(meta)))
 
-meta$Hours   <- CONFIG$time_map[as.character(meta$Group)]
-meta$TimeVar <- log1p(meta$Hours)   # log-spaced: hours to weeks in one design
+cat("Samples per group after pooling:\n"); print(table(meta$Group))
+cat("\nBirds contributing 1 / 2 / ... draws:\n"); print(table(table(meta$ID_Band)))
+cat("\nSamples:", nrow(meta), "| Birds:", length(unique(meta$ID_Band)), "\n")
 
-cat("Samples per group (after occasion pooling):\n")
-print(table(meta$Group))
-cat("Draws per bird:\n")
-print(table(table(meta$ID_Band)))
-cat("Samples retained:", nrow(meta),
-    "| Birds:", length(unique(meta$ID_Band)), "\n")
-
-stopifnot(all(table(meta$Group) >= CONFIG$min_n_per_group))
-if (is.finite(CONFIG$expected_n)) stopifnot(nrow(meta) == CONFIG$expected_n)
-## Repeated measures only exist if some bird contributes > 1 sample
-stopifnot(any(table(meta$ID_Band) > 1))
 ```
 
-# Filter and TMM normalize
+# Filter genes and TMM-normalise
 
 ```{r normalize}
 
-stopifnot(!any(c("group", "lib.size", "norm.factors") %in% colnames(meta)))
-
 dge <- edgeR::DGEList(counts = counts, samples = meta, group = meta$Group)
-keep_genes <- edgeR::filterByExpr(dge, group = dge$samples$group)
-dge <- dge[keep_genes, , keep.lib.sizes = FALSE]
+dge <- dge[edgeR::filterByExpr(dge, group = dge$samples$group), ,
+           keep.lib.sizes = FALSE]
 dge <- edgeR::calcNormFactors(dge, method = "TMM")
 cat("Genes retained:", nrow(dge), "| Samples:", ncol(dge), "\n")
 
 logcpm <- edgeR::cpm(dge, log = TRUE, prior.count = 2)
 
-## Standardize limma topTable output to the liver script's column names
-tidy_tt <- function(tt) {
-  out <- data.frame(row.names = rownames(tt))
-  if ("logFC" %in% colnames(tt)) out$logFC <- tt$logFC
-  out$logCPM <- tt$AveExpr
-  out$PValue <- tt$P.Value
-  out$FDR    <- tt$adj.P.Val
-  out
-}
 ```
 
-# QC: PCA with candidate outliers labelled
+# QC: PCA: Visual Check for any outlier samples
 
 ```{r pca, fig.width = 7, fig.height = 5}
-pca <- stats::prcomp(t(logcpm), center = TRUE, scale. = FALSE)
+
+pca  <- stats::prcomp(t(logcpm), center = TRUE, scale. = FALSE)
 n_pc <- min(5, ncol(pca$x))
 pct  <- round(100 * summary(pca)$importance[2, 1:2], 1)
 
 pca_df <- data.frame(
-  PC1       = pca$x[, 1],
-  PC2       = pca$x[, 2],
+  PC1 = pca$x[, 1], PC2 = pca$x[, 2],
   Treatment = dge$samples$group,
   Band      = dge$samples$ID_Band
 )
-pca_df$Flag <- ifelse(pca_df$Band %in% c(4531, 4817),
+pca_df$Flag <- ifelse(pca_df$Band %in% CONFIG$flag_bands,
                       as.character(pca_df$Band), NA_character_)
 
 p_pca <- ggplot2::ggplot(pca_df, ggplot2::aes(PC1, PC2, colour = Treatment)) +
@@ -272,59 +295,44 @@ p_pca <- ggplot2::ggplot(pca_df, ggplot2::aes(PC1, PC2, colour = Treatment)) +
                 y = paste0("PC2 (", pct[2], "%)"),
                 title = "Blood, female timecourse (candidate outliers labelled)") +
   ggplot2::theme_bw()
+
 p_pca
 
 ggplot2::ggsave(file.path(CONFIG$out_dir, "PCA_timecourse_with_outliers.png"),
                 p_pca, width = 7, height = 5, dpi = 300)
-```
 
-```{r centroid-distance}
-## Distance from each sample to its own treatment-group centroid across the
-## first n_pc components — a numeric companion to the visual check.
-scores <- pca$x[, seq_len(n_pc), drop = FALSE]
-grp    <- as.character(dge$samples$group)
-
+## Euclidean distance from each sample to its own group centroid (mean) over PC1..n_pc
+scores    <- pca$x[, seq_len(n_pc), drop = FALSE]
+grp       <- as.character(dge$samples$group)
 centroids <- t(vapply(split(seq_len(nrow(scores)), grp),
-                      function(idx) colMeans(scores[idx, , drop = FALSE]),
+                      function(i) colMeans(scores[i, , drop = FALSE]),
                       numeric(n_pc)))
-
-d_cent <- sqrt(rowSums((scores - centroids[grp, , drop = FALSE])^2))
 
 dist_tab <- data.frame(
   Sample    = rownames(scores),
   Band      = dge$samples$ID_Band,
   Occasion  = dge$samples$Occasion,
   Treatment = dge$samples$group,
-  DistToCentroid = round(d_cent, 2)
+  DistToCentroid = round(sqrt(rowSums((scores - centroids[grp, , drop = FALSE])^2)), 2)
 )
 dist_tab <- dist_tab[order(-dist_tab$DistToCentroid), ]
 print(utils::head(dist_tab, 10))
-
-utils::write.csv(dist_tab,
-                 file.path(CONFIG$out_dir, "PCA_centroid_distances.csv"),
+utils::write.csv(dist_tab, file.path(CONFIG$out_dir, "PCA_centroid_distances.csv"),
                  row.names = FALSE)
 ```
 
-# Spline time-series model (bird as random ID)
-
-Omnibus test per gene: does expression change smoothly with time in any way?
-`voomLmFit(block = ID_Band)` runs voom, estimates the consensus intra-bird
-correlation with `duplicateCorrelation`, then refits with that correlation —
-the repeated-measures equivalent of a random intercept per bird.
+# Model 1: Spline 
 
 ```{r spline-model}
+
 spl <- splines::ns(dge$samples$TimeVar, df = CONFIG$spline_df)
 design_spline <- stats::model.matrix(~ spl)
 colnames(design_spline) <- c("Intercept",
                              paste0("spl", seq_len(CONFIG$spline_df)))
-stopifnot(qr(design_spline)$rank == ncol(design_spline))
 
-fit_spline <- edgeR::voomLmFit(dge, design_spline,
-                               block = dge$samples$ID_Band)
-if (!is.null(fit_spline$correlation)) {
-  cat("Consensus intra-bird correlation (spline design):",
-      round(fit_spline$correlation, 3), "\n")
-}
+fit_spline <- edgeR::voomLmFit(dge, design_spline, block = dge$samples$ID_Band)
+cat("Consensus within-bird correlation (spline design):",
+    round(fit_spline$correlation, 3), "\n")
 fit_spline <- limma::eBayes(fit_spline, robust = TRUE)
 
 res_spline <- tidy_tt(limma::topTable(fit_spline,
@@ -332,114 +340,89 @@ res_spline <- tidy_tt(limma::topTable(fit_spline,
                                       number = Inf, sort.by = "none"))
 cat("Spline-significant genes (FDR <", CONFIG$fdr_cut, "):",
     sum(res_spline$FDR < CONFIG$fdr_cut), "\n")
+
 ```
 
-# Cross-check: factor-based ANODEV
+# Model 2: group means, ANODEV and all contrasts
 
-```{r factor-anodev}
-grp_factor <- dge$samples$group
-design_grp <- stats::model.matrix(~ grp_factor)
-colnames(design_grp) <- gsub("^grp_factor", "", colnames(design_grp))
+```{r group-model}
 
-fit_grp <- edgeR::voomLmFit(dge, design_grp, block = dge$samples$ID_Band)
-fit_grp <- limma::eBayes(fit_grp, robust = TRUE)
-res_grp <- tidy_tt(limma::topTable(fit_grp, coef = 2:ncol(design_grp),
-                                   number = Inf, sort.by = "none"))
-
-stopifnot(setequal(rownames(res_grp), rownames(res_spline)))
-overlap <- table(
-  spline = res_spline$FDR < CONFIG$fdr_cut,
-  factor = res_grp[rownames(res_spline), "FDR"] < CONFIG$fdr_cut
-)
-print(overlap)
-```
-
-# Adjacent-timepoint contrasts
-
-Locates where along the trajectory the change occurs. Level names stay as A–E
-here so `makeContrasts` can parse them. The blocked fit (`fit_0`) is shared by
-this chunk and the reversal scatter.
-
-```{r contrasts}
-design_0 <- stats::model.matrix(~ 0 + grp_factor)
+grp_factor <- droplevels(dge$samples$group)
+design_0   <- stats::model.matrix(~ 0 + grp_factor) # the addition of zero removes the intercept so we get 5 columns representing the group mean of each treatment group
 colnames(design_0) <- levels(grp_factor)
 
+# For Repeated Measures: Asks when two samples across timepoints come from the same bird, where do they fall in relation to the group mean
+
 fit_0 <- edgeR::voomLmFit(dge, design_0, block = dge$samples$ID_Band)
-if (!is.null(fit_0$correlation)) {
-  cat("Consensus intra-bird correlation (group design):",
-      round(fit_0$correlation, 3), "\n")
-}
+cat("Consensus within-bird correlation (group design):",
+    round(fit_0$correlation, 3), "\n")
+
+## Contrasts use the A–E letters
+# A (Control), B (Heat), C (2-Hr Recovery), D (24-hr recovery), E (2-Week Recovery)
 
 con <- limma::makeContrasts(
+  ## vs Control 
   Heat_vs_Control   = B - A,
+  Rec2h_vs_Control  = C - A,
+  Rec24h_vs_Control = D - A,
+  Rec2wk_vs_Control = E - A,
+  
+  ## Sequential Comparison
   Rec2h_vs_Heat     = C - B,
   Rec24h_vs_Rec2h   = D - C,
   Rec2wk_vs_Rec24h  = E - D,
-  Rec2wk_vs_Control = E - A,
   levels = design_0
 )
-
 fit_con <- limma::eBayes(limma::contrasts.fit(fit_0, con), robust = TRUE)
 
-step_res <- lapply(colnames(con), function(cn) {
-  tt <- tidy_tt(limma::topTable(fit_con, coef = cn,
-                                number = Inf, sort.by = "none"))
-  data.frame(logFC = tt$logFC, FDR = tt$FDR, row.names = rownames(tt))
-})
-names(step_res) <- colnames(con)
+anodev_set <- c("Heat_vs_Control", "Rec2h_vs_Control",
+                "Rec24h_vs_Control", "Rec2wk_vs_Control")
+step_set   <- c("Heat_vs_Control", "Rec2h_vs_Heat",
+                "Rec24h_vs_Rec2h", "Rec2wk_vs_Rec24h", "Rec2wk_vs_Control")
 
-step_tab <- do.call(cbind, lapply(names(step_res), function(cn) {
-  x <- step_res[[cn]][rownames(res_spline), , drop = FALSE]
-  stats::setNames(x, paste0(c("logFC_", "FDR_"), cn))
-}))
-stopifnot(nrow(step_tab) == nrow(res_spline))
+res_grp <- tidy_tt(limma::topTable(fit_con, coef = anodev_set,
+                                   number = Inf, sort.by = "none"))
+cat("Factor ANODEV significant genes:", sum(res_grp$FDR < CONFIG$fdr_cut), "\n")
 
-print(vapply(step_res, function(x) sum(x$FDR < CONFIG$fdr_cut), numeric(1)))
+## sort.by = "none" keeps every table in the row order of dge.
+per_con <- lapply(colnames(con), function(cn)
+  tidy_tt(limma::topTable(fit_con, coef = cn, number = Inf, sort.by = "none")))
+names(per_con) <- colnames(con)
+
+cat("\nDEGs per contrast (FDR <", CONFIG$fdr_cut, "):\n")
+print(vapply(per_con, function(x) sum(x$FDR < CONFIG$fdr_cut), numeric(1)))
 ```
 
-# Reversal scatter: recovery logFC vs heat logFC
+## Spline vs Factor Model
+
+```{r overlap}
+print(table(spline = res_spline$FDR < CONFIG$fdr_cut,
+            factor = res_grp$FDR   < CONFIG$fdr_cut))
+```
+
 
 ```{r reversal-scatter, fig.width = 10, fig.height = 4}
 
-## Recovery-vs-Control contrasts (B - A already exists in step_res)
-con_rev <- limma::makeContrasts(
-  Rec2h  = C - A,
-  Rec24h = D - A,
-  Rec2wk = E - A,
-  levels = design_0
-)
+sig        <- res_spline$FDR < CONFIG$fdr_cut   
+heat_lfc   <- per_con$Heat_vs_Control$logFC
+panel_labs <- c(Rec2h_vs_Control  = "+2 h",
+                Rec24h_vs_Control = "+24 h",
+                Rec2wk_vs_Control = "+2 wk")
 
-fit_rev <- limma::eBayes(limma::contrasts.fit(fit_0, con_rev), robust = TRUE)
-
-rev_lfc <- vapply(colnames(con_rev), function(cn) {
-  tt <- limma::topTable(fit_rev, coef = cn, number = Inf, sort.by = "none")
-  tt[rownames(res_spline), "logFC"]
-}, numeric(nrow(res_spline)))
-
-sig      <- res_spline$FDR < CONFIG$fdr_cut
-heat_lfc <- step_res$Heat_vs_Control[rownames(res_spline), "logFC"]
-
-panel_labs <- c(Rec2h = "+2 h", Rec24h = "+24 h", Rec2wk = "+2 wk")
-
-rev_df <- do.call(rbind, lapply(colnames(con_rev), function(cn) {
-  data.frame(
-    GeneID   = rownames(res_spline)[sig],
-    Heat_LFC = heat_lfc[sig],
-    Rec_LFC  = rev_lfc[sig, cn],
-    Panel    = factor(panel_labs[cn], levels = panel_labs)
-  )
+rev_df <- do.call(rbind, lapply(names(panel_labs), function(cn) {
+  data.frame(GeneID   = rownames(res_spline)[sig],
+             Heat_LFC = heat_lfc[sig],
+             Rec_LFC  = per_con[[cn]]$logFC[sig],
+             Panel    = factor(panel_labs[cn], levels = panel_labs))
 }))
 
-## Slope through the origin: fraction of heat response retained
 slope_tab <- do.call(rbind, lapply(split(rev_df, rev_df$Panel), function(d) {
   f <- stats::lm(Rec_LFC ~ 0 + Heat_LFC, data = d)
-  data.frame(
-    Panel = d$Panel[1],
-    Slope = round(stats::coef(f)[1], 3),
-    SE    = round(summary(f)$coefficients[1, 2], 3),
-    R2    = round(summary(f)$r.squared, 3),
-    row.names = NULL
-  )
+  data.frame(Panel = d$Panel[1],
+             Slope = round(stats::coef(f)[1], 3),
+             SE    = round(summary(f)$coefficients[1, 2], 3),
+             R2    = round(summary(f)$r.squared, 3),
+             row.names = NULL)
 }))
 print(slope_tab)
 
@@ -448,8 +431,8 @@ slope_tab$Label <- sprintf("slope = %.2f \u00b1 %.2f\nR\u00b2 = %.2f",
 
 p_rev <- ggplot2::ggplot(rev_df, ggplot2::aes(Heat_LFC, Rec_LFC)) +
   ggplot2::geom_hline(yintercept = 0, colour = "grey60") +
-  ggplot2::geom_abline(slope = 1, intercept = 0,
-                       linetype = 2, colour = "grey60") +
+  ## Dashed y = x: where a gene would sit if nothing had recovered..... come back to this
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, colour = "grey60") +
   ggplot2::geom_point(alpha = 0.25, size = 1, colour = "steelblue") +
   ggplot2::geom_smooth(method = "lm", formula = y ~ 0 + x,
                        colour = "firebrick", linewidth = 0.8, se = TRUE) +
@@ -457,53 +440,39 @@ p_rev <- ggplot2::ggplot(rev_df, ggplot2::aes(Heat_LFC, Rec_LFC)) +
                      ggplot2::aes(x = -Inf, y = Inf, label = Label),
                      hjust = -0.1, vjust = 1.3, size = 3) +
   ggplot2::facet_wrap(~ Panel, nrow = 1) +
-  ggplot2::labs(
-    x = "logFC Heat vs Control",
-    y = "logFC Recovery vs Control",
-  ) +
+  ggplot2::labs(x = "logFC Heat vs Control", y = "logFC Recovery vs Control") +
   ggplot2::theme_bw()
 p_rev
 
 ggplot2::ggsave(file.path(CONFIG$out_dir, "Reversal_scatter.png"),
                 p_rev, width = 10, height = 4, dpi = 300)
-
 utils::write.csv(slope_tab[, c("Panel", "Slope", "SE", "R2")],
-                 file.path(CONFIG$out_dir, "Reversal_slopes.csv"),
-                 row.names = FALSE)
+                 file.path(CONFIG$out_dir, "Reversal_slopes.csv"), row.names = FALSE)
 ```
 
-# Trajectory clustering
+#  trajectory clustering
 
-Groups significant genes by response *shape* rather than direction, so
-"spiked and recovered" and "spiked and stayed up" do not share a gene list.
 
-```{r clustering, fig.width = 9, fig.height = 6}
+```{r clustering, eval = CONFIG$do_clustering, fig.width = 9, fig.height = 6}
 sig_genes <- rownames(res_spline)[res_spline$FDR < CONFIG$fdr_cut]
 stopifnot(length(sig_genes) > CONFIG$n_clusters)
 
-grp_means <- t(apply(logcpm[sig_genes, , drop = FALSE], 1, function(y)
-  tapply(y, dge$samples$group, mean)))
-grp_z <- t(scale(t(grp_means)))
+grp_means <- t(apply(logcpm[sig_genes, , drop = FALSE], 1,
+                     function(y) tapply(y, dge$samples$group, mean)))
+grp_z <- t(scale(t(grp_means)))              # z-scoring removes amplitude
 grp_z <- grp_z[stats::complete.cases(grp_z), , drop = FALSE]
 cat("Genes clustered:", nrow(grp_z), "of", length(sig_genes), "significant\n")
 
-km <- stats::kmeans(grp_z, centers = CONFIG$n_clusters,
-                    nstart = 50, iter.max = 100)
+km <- stats::kmeans(grp_z, centers = CONFIG$n_clusters, nstart = 50, iter.max = 100)
 
 clust_df <- do.call(rbind, lapply(seq_len(CONFIG$n_clusters), function(k) {
   m  <- grp_z[km$cluster == k, , drop = FALSE]
-  se <- if (nrow(m) > 1) {
-    apply(m, 2, function(v) stats::sd(v) / sqrt(length(v)))
-  } else {
-    rep(0, ncol(m))          # single-gene cluster: no spread to show
-  }
-  data.frame(
-    Treatment = factor(CONFIG$treat_labels[colnames(grp_z)],
-                       levels = CONFIG$treat_labels),
-    Mean      = colMeans(m),
-    SE        = se,
-    Cluster   = paste0("Cluster ", k, " (n=", nrow(m), ")")
-  )
+  se <- if (nrow(m) > 1) apply(m, 2, function(v) stats::sd(v) / sqrt(length(v)))
+        else rep(0, ncol(m))
+  data.frame(Treatment = factor(CONFIG$treat_labels[colnames(grp_z)],
+                                levels = CONFIG$treat_labels),
+             Mean = colMeans(m), SE = se,
+             Cluster = paste0("Cluster ", k, " (n=", nrow(m), ")"))
 }))
 
 p_clust <- ggplot2::ggplot(clust_df, ggplot2::aes(Treatment, Mean, group = 1)) +
@@ -524,34 +493,43 @@ ggplot2::ggsave(file.path(CONFIG$out_dir, "Trajectory_clusters.png"),
 
 # Outputs
 
+One row per tested gene: both model FDRs, then logFC and FDR for each
+adjacent contrast. 
 ```{r outputs}
+step_tab <- do.call(cbind, lapply(step_set, function(cn)
+  stats::setNames(per_con[[cn]][, c("logFC", "FDR")],
+                  paste0(c("logFC_", "FDR_"), cn))))
+
 out <- data.frame(
   GeneID        = rownames(res_spline),
   Symbol        = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(res_spline)),
   logCPM        = res_spline$logCPM,
   PValue_spline = res_spline$PValue,
   FDR_spline    = res_spline$FDR,
-  FDR_factor    = res_grp[rownames(res_spline), "FDR"],
+  FDR_factor    = res_grp$FDR,
   step_tab,
-  Cluster       = unname(km$cluster[rownames(res_spline)]),
   row.names = NULL, check.names = FALSE
 )
-out <- out[order(out$FDR_spline), ]
 
-utils::write.csv(out,
-                 file.path(CONFIG$out_dir, "Timeseries_spline_results.csv"),
+if (CONFIG$do_clustering) {
+  out$Cluster <- unname(km$cluster[out$GeneID])   # NA for non-significant genes
+}
+out <- out[order(out$FDR_factor), ]
+
+utils::write.csv(out, file.path(CONFIG$out_dir, "Timeseries_spline_results.csv"),
                  row.names = FALSE)
 
-grp_means_out <- as.data.frame(grp_means)
-colnames(grp_means_out) <- CONFIG$treat_labels[colnames(grp_means_out)]
-utils::write.csv(grp_means_out,
-                 file.path(CONFIG$out_dir, "Sig_gene_group_means_logCPM.csv"))
+if (CONFIG$do_clustering) {
+  grp_means_out <- as.data.frame(grp_means)
+  colnames(grp_means_out) <- CONFIG$treat_labels[colnames(grp_means_out)]
+  utils::write.csv(grp_means_out,
+                   file.path(CONFIG$out_dir, "Sig_gene_group_means_logCPM.csv"))
 
-## Per-cluster gene lists for downstream GSEA/GO (feed into Script 7)
-for (k in seq_len(CONFIG$n_clusters)) {
-  utils::write.csv(out[which(out$Cluster == k), c("GeneID", "Symbol")],
-                   file.path(CONFIG$out_dir, paste0("Cluster_", k, "_genes.csv")),
-                   row.names = FALSE)
+  for (k in seq_len(CONFIG$n_clusters)) {
+    utils::write.csv(out[which(out$Cluster == k), c("GeneID", "Symbol")],
+                     file.path(CONFIG$out_dir, paste0("Cluster_", k, "_genes.csv")),
+                     row.names = FALSE)
+  }
 }
 ```
 
