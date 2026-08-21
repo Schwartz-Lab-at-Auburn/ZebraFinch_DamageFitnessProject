@@ -236,9 +236,7 @@ appear in group E via their own `D` draw.
 
 `block = ID_Band` in the model below is what handles that. It does not assume
 every bird was sampled repeatedly: a bird with a single sample is a block of one,
-has no within-block pair, and is treated as independent. The consensus
-correlation enters the fit globally, so it affects the standard errors of every
-contrast, not only the ones spanning the B <-> E pair, I think.......
+has no within-block pair, and is treated as independent.
 
 ```{r pool-groups}
 
@@ -474,8 +472,7 @@ utils::write.csv(compare_tab,
 
 # Scatter Plot - Test (Ignore)
 
-Genes significant in the focus contrast (`Heat_vs_Control` by default). Each
-panel plots that gene's heat response on the x-axis against its state at one
+ Each panel plots that gene's heat response on the x-axis against its state at one
 recovery timepoint on the y-axis, both relative to Control. A point on the
 dashed y = x line has not recovered at all
 
