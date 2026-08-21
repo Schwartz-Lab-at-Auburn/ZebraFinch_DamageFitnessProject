@@ -9,18 +9,17 @@ output: html_document
 SCRIPT Info:
 
 Differential expression across a five-point time-series (A-E).
-Two questions, in order:
+One question:
 
-  1. Does this gene change at all across the time-series?
-     ->  F test across the four timepoints vs-Control 
-
-  2. Where along the time-series does expression change?
-     -> Adjacent-timepoint contrasts (B-A, C-B, D-C, E-D) plus E-A as a
-        "did it return to baseline?" test.
+  Where along the time-series does expression differ, and from what?
+     -> Four vs-Control contrasts (B-A, C-A, D-A, E-A): is the bird different
+        from baseline at this timepoint?
+     -> Three adjacent-timepoint contrasts (C-B, D-C, E-D): what changed since
+        the previous timepoint?
+     (B-A doubles as the first adjacent step, Control -> Heat.)
 
 REPEATED MEASURES:
-9 birds: assigned to the 2-week recovery group (E) - contributed two draws (same bird sampled at Heat and then recovery) The other 40 birds contributed a single draw each (49 birds, 58 samples total). Models are fit with block = ID_Band, which treats those 9 paired birds as correlated and every other bird as independent. The
-blocking therefore affects only the B <-> E relationship. 
+9 birds: assigned to the 2-week recovery group (E) - contributed two draws (same bird sampled at Heat and then recovery) The other 40 birds contributed a single draw each (49 birds, 58 samples total). Models are fit with block = ID_Band, which treats those 9 paired birds as correlated and every other bird as independent. The blocking therefore affects only the B <-> E relationship. 
 
 Notes: 
   Occasion (from the sample name ZF_<band>_<occasion>_BL):
@@ -72,6 +71,8 @@ CONFIG <- list(
   time_map        = NULL,      # see below
 
   fdr_cut         = 0.05,
+
+  focus_contrast  = "Heat_vs_Control",
 
   ## ID_Bands to label on the PCA plot. 
   flag_bands      = numeric(0),
@@ -340,7 +341,7 @@ utils::write.csv(dist_tab, file.path(CONFIG$out_dir, "PCA_centroid_distances.csv
                  row.names = FALSE)
 ```
 
-# Model: group means,  F test and all contrasts
+# Model: group means and contrasts
 
 `Group` is the biological condition the sample
 represents, not the bird's assigned endpoint — so an E bird's `H` draw sits in
@@ -359,7 +360,11 @@ cat("within-bird correlation (group design):",
     round(fit_0$correlation, 3), "\n")
 
 ## Contrasts use the A–E letters
-# A (Control), B (Heat), C (2-Hr Recovery), D (24-hr recovery), E (2-Week Recovery) 
+# A (Control), B (Heat), C (2-Hr Recovery), D (24-hr recovery), E (2-Week Recovery)
+#
+# Every one of these is between-bird EXCEPT the B <-> E relationship, where 9
+# birds contribute a sample to each side. Do not describe C - B or D - C as
+# within-bird recovery.
 
 con <- limma::makeContrasts(
   ## vs Control 
@@ -376,17 +381,12 @@ con <- limma::makeContrasts(
 )
 fit_con <- limma::eBayes(limma::contrasts.fit(fit_0, con), robust = TRUE)
 
-anodev_set <- c("Heat_vs_Control", "Rec2h_vs_Control",
-                "Rec24h_vs_Control", "Rec2wk_vs_Control")
-step_set   <- c("Heat_vs_Control", "Rec2h_vs_Heat",
-                "Rec24h_vs_Rec2h", "Rec2wk_vs_Rec24h", "Rec2wk_vs_Control")
+step_set <- c("Heat_vs_Control", "Rec2h_vs_Heat",
+              "Rec24h_vs_Rec2h", "Rec2wk_vs_Rec24h", "Rec2wk_vs_Control")
 
-
-res_grp <- limma::topTable(fit_con, coef = anodev_set,
-                           number = Inf, sort.by = "none")
-cat("significant genes:",
-    sum(res_grp$adj.P.Val < CONFIG$fdr_cut), "\n")
-
+## One moderated t test per contrast. Each is FDR-corrected within itself, so
+## the counts below are not comparable to each other as evidence strength -
+## a contrast with more signal gets a more permissive BH threshold.
 per_con <- lapply(colnames(con), function(cn)
   limma::topTable(fit_con, coef = cn, number = Inf, sort.by = "none"))
 names(per_con) <- colnames(con)
@@ -394,22 +394,35 @@ names(per_con) <- colnames(con)
 cat("\nDEGs per contrast (FDR <", CONFIG$fdr_cut, "):\n")
 print(vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)))
 
+## Gene set carried into the scatter and the clustering below.
+stopifnot(CONFIG$focus_contrast %in% names(per_con))
+focus <- per_con[[CONFIG$focus_contrast]]
+sig   <- focus$adj.P.Val < CONFIG$fdr_cut
+cat("\nFocus contrast:", CONFIG$focus_contrast, "-", sum(sig), "genes\n")
+
 ```
 
 # Scatter Plot
 
--significant genes only. axes are logFC against control
+Genes significant in the focus contrast (`Heat_vs_Control` by default). Each
+panel plots that gene's heat response on the x-axis against its state at one
+recovery timepoint on the y-axis, both relative to Control. A point on the
+dashed y = x line has not recovered at all; a point on y = 0 has returned to
+baseline.
+
+Both axes share group A, so they are positively correlated through it and the
+fitted slope is biased upward — treat it as descriptive, not as an unbiased
+estimate of the fraction of the response retained.
 
 ```{r scatter, fig.width = 10, fig.height = 4}
 
-sig <- res_grp$adj.P.Val < CONFIG$fdr_cut
 heat_lfc   <- per_con$Heat_vs_Control$logFC
 panel_labs <- c(Rec2h_vs_Control  = "+2 h",
                 Rec24h_vs_Control = "+24 h",
                 Rec2wk_vs_Control = "+2 wk")
 
 rev_df <- do.call(rbind, lapply(names(panel_labs), function(cn) {
-  data.frame(GeneID   = rownames(res_grp)[sig],
+  data.frame(GeneID   = rownames(focus)[sig],
              Heat_LFC = heat_lfc[sig],
              Rec_LFC  = per_con[[cn]]$logFC[sig],
              Panel    = factor(panel_labs[cn], levels = panel_labs))
@@ -430,7 +443,7 @@ slope_tab$Label <- sprintf("slope = %.2f \u00b1 %.2f\nR\u00b2 = %.2f",
 
 p_rev <- ggplot2::ggplot(rev_df, ggplot2::aes(Heat_LFC, Rec_LFC)) +
   ggplot2::geom_hline(yintercept = 0, colour = "grey60") +
-  ## Dashed y = x: where a gene would sit if nothing had recovered..... come back to this
+  ## Dashed y = x: where a gene would sit if nothing had recovered.
   ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, colour = "grey60") +
   ggplot2::geom_point(alpha = 0.25, size = 1, colour = "steelblue") +
   ggplot2::geom_smooth(method = "lm", formula = y ~ 0 + x,
@@ -454,9 +467,13 @@ utils::write.csv(slope_tab[, c("Panel", "Slope", "SE", "R2")],
 
 
 ```{r clustering, eval = CONFIG$do_clustering, fig.width = 9, fig.height = 6}
-sig_genes <- rownames(res_grp)[res_grp$adj.P.Val < CONFIG$fdr_cut]
+sig_genes <- rownames(focus)[sig]
 stopifnot(length(sig_genes) > CONFIG$n_clusters)
 
+## Note on set size: with the focus contrast rather than an omnibus test, this
+## gene set is small (tens, not thousands). k-means on that few genes is
+## unstable - treat any clusters as illustrative, not as discovered trajectory
+## classes.
 grp_means <- t(apply(logcpm[sig_genes, , drop = FALSE], 1,
                      function(y) tapply(y, dge$samples$group, mean)))
 grp_z <- t(scale(t(grp_means)))              # z-scoring removes amplitude
@@ -493,46 +510,60 @@ ggplot2::ggsave(file.path(CONFIG$out_dir, "Trajectory_clusters.png"),
 
 # Outputs
 
-One row per tested gene: the FDR, then logFC and FDR for each
-adjacent contrast. 
+`Timeseries_contrast_results.csv` — one row per tested gene, with logFC, raw p
+and FDR for all seven contrasts side by side. This is the table downstream
+scripts should read.
+
+`Sig_<contrast>.csv` — the significant genes for each contrast that has any,
+already sorted by FDR.
 
 ```{r outputs}
 
-step_tab <- do.call(cbind, lapply(step_set, function(cn)
-  stats::setNames(per_con[[cn]][, c("logFC", "adj.P.Val")],
-                  paste0(c("logFC_", "FDR_"), cn))))
+## All seven contrasts, wide. per_con tables are all sort.by = "none", so rows
+## are aligned across contrasts and can be cbind-ed directly.
+gene_ids <- rownames(per_con[[1]])
+stopifnot(all(vapply(per_con, function(x) identical(rownames(x), gene_ids),
+                     logical(1))))
+
+all_tab <- do.call(cbind, lapply(names(per_con), function(cn)
+  stats::setNames(per_con[[cn]][, c("logFC", "P.Value", "adj.P.Val")],
+                  paste0(c("logFC_", "PValue_", "FDR_"), cn))))
 
 out <- data.frame(
-  GeneID        = rownames(res_grp),
-  Symbol        = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(res_grp)),
-  logCPM        = res_grp$AveExpr,
-  PValue_factor = res_grp$P.Value,
-  FDR_factor    = res_grp$adj.P.Val,
-  step_tab,
+  GeneID = gene_ids,
+  Symbol = sub("^gene-([^|]+)\\|.*$", "\\1", gene_ids),
+  logCPM = per_con[[1]]$AveExpr,
+  all_tab,
   row.names = NULL, check.names = FALSE
 )
-
-##  Omnibus (five-level factor) model table
-res_grp_out <- data.frame(
-  GeneID    = rownames(res_grp),
-  Symbol    = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(res_grp)),
-  logCPM    = res_grp$AveExpr,
-  res_grp[, anodev_set, drop = FALSE],
-  F         = res_grp$F,
-  PValue    = res_grp$P.Value,
-  FDR       = res_grp$adj.P.Val,
-  row.names = NULL, check.names = FALSE
-)
-colnames(res_grp_out)[match(anodev_set, colnames(res_grp_out))] <-
-  paste0("logFC_", anodev_set)
-res_grp_out <- res_grp_out[order(res_grp_out$FDR), ]
+out <- out[order(out[[paste0("FDR_", CONFIG$focus_contrast)]]), ]
 
 w <- function(x, f) utils::write.csv(x, file.path(CONFIG$out_dir, f),
                                      row.names = FALSE)
 
-w(res_grp_out,                                     "Factor_all_genes.csv")
-w(res_grp_out[res_grp_out$FDR < CONFIG$fdr_cut, ], "Factor_significant_genes.csv")
+w(out, "Timeseries_contrast_results.csv")
 
+## Per-contrast significant gene lists
+for (cn in names(per_con)) {
+  tt  <- per_con[[cn]]
+  hit <- tt$adj.P.Val < CONFIG$fdr_cut
+  if (!any(hit)) next
+  sig_tab <- data.frame(
+    GeneID = gene_ids[hit],
+    Symbol = sub("^gene-([^|]+)\\|.*$", "\\1", gene_ids[hit]),
+    logCPM = tt$AveExpr[hit],
+    logFC  = tt$logFC[hit],
+    PValue = tt$P.Value[hit],
+    FDR    = tt$adj.P.Val[hit],
+    row.names = NULL, check.names = FALSE
+  )
+  sig_tab <- sig_tab[order(sig_tab$FDR), ]
+  w(sig_tab, paste0("Sig_", cn, ".csv"))
+}
+
+cat("\nGenes tested:", nrow(out), "\n")
+cat("Significant per contrast:\n")
+print(vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)))
 
 ```
 
