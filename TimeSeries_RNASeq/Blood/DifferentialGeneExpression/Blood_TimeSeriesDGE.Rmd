@@ -239,7 +239,7 @@ appear in group E via their own `D` draw.
 every bird was sampled repeatedly: a bird with a single sample is a block of one,
 has no within-block pair, and is treated as independent. The consensus
 correlation enters the fit globally, so it affects the standard errors of every
-contrast, not only the ones spanning the B <-> E pair.
+contrast, not only the ones spanning the B <-> E pair, I think.......
 
 ```{r pool-groups}
 
