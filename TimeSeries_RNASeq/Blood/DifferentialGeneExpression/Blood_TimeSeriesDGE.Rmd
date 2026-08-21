@@ -601,7 +601,7 @@ utils::write.csv(data.frame(GeneID = rownames(grp_z), Cluster = cl),
 `Timeseries_contrast_results.csv` — one row per tested gene, with logFC, raw p
 and FDR for all eight contrasts side by side. 
 
-`Sig_<contrast>.csv` — the significant genes for each contrast that has any,
+`Sig_contrast.csv` — the significant genes for each contrast that has any,
 already sorted by FDR.
 
 ```{r outputs}
