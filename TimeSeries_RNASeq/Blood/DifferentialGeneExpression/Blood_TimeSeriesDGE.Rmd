@@ -11,8 +11,7 @@ SCRIPT Info:
 Differential expression across a five-point time-series (A-E).
 
   Where along the time-series does expression differ, and from what?
-     -> Four vs-Control contrasts (B-A, C-A, D-A, E-A): is the bird different
-        from baseline at this timepoint?
+     -> Four vs-Control contrasts (B-A, C-A, D-A, E-A): does expression differ from control at any particular timepoint?
      -> Three adjacent-timepoint contrasts (C-B, D-C, E-D): what changed since
         the previous timepoint?
 
@@ -286,7 +285,7 @@ logcpm <- edgeR::cpm(dge, log = TRUE, prior.count = 1)
 
 ```
 
-# QC: PCA: Visual Check for any outlier samples
+# QC: PCA: Visual Check 
 
 ```{r pca, fig.width = 7, fig.height = 5}
 
@@ -378,6 +377,8 @@ con <- limma::makeContrasts(
   Rec24h_vs_Control = D - A,
   Rec2wk_vs_Control = E - A,
   
+  Rec2wk_vs_Heat    = E - B,
+  
   ## Sequential Comparison
   Rec2h_vs_Heat     = C - B,
   Rec24h_vs_Rec2h   = D - C,
@@ -437,7 +438,8 @@ pairs_tp <- list(
   Rec2wk_vs_Control = c("E", "A"),
   Rec2h_vs_Heat     = c("C", "B"),
   Rec24h_vs_Rec2h   = c("D", "C"),
-  Rec2wk_vs_Rec24h  = c("E", "D")
+  Rec2wk_vs_Rec24h  = c("E", "D"),
+  Rec2wk_vs_Heat    = c("E", "B"),
 )
 
 con_sp <- vapply(pairs_tp, function(p) X_tp[p[1], ] - X_tp[p[2], ],
@@ -661,7 +663,6 @@ for (cn in names(per_con)) {
   sig_tab <- sig_tab[order(sig_tab$FDR), ]
   w(sig_tab, paste0("Sig_", cn, ".csv"))
 }
-
 
 ```
 
