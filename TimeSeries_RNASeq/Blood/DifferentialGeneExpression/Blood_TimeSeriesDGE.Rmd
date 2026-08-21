@@ -42,6 +42,7 @@ rm(list = ls(all = TRUE))
 library(edgeR)
 library(limma)
 library(ggplot2)
+
 ```
 
 # CONFIG
@@ -75,10 +76,11 @@ CONFIG <- list(
   ## ID_Bands to label on the PCA plot. 
   flag_bands      = numeric(0),
 
-  ## For Cluster Analysis - Ignore for now (Need to think more on how to choose the appropriate number of clusters. Each cluster represents genes with similar expression patterns)
+  ## For Cluster Analysis - Ignore for now (Need to think more on whether this is the right way to go about this)
 
-  do_clustering   = FALSE,
-  n_clusters      = 6,
+  do_clustering   = TRUE,
+  part_minclus    = 50,
+  part_recursion  = 100,
 
   seed            = 1234 # Specified so seed doesn't change when running GSEA multiple times
 )
@@ -391,6 +393,49 @@ focus <- per_con[[CONFIG$focus_contrast]]
 sig   <- focus$adj.P.Val < CONFIG$fdr_cut
 cat("\nFocus contrast:", CONFIG$focus_contrast, "-", sum(sig), "genes\n")
 
+omni <- limma::topTable(fit_con, coef = 1:4, number = Inf, sort.by = "none")
+sig  <- omni$adj.P.Val < CONFIG$fdr_cut
+
+
+```
+
+# Spline model
+
+```{r spline-model}
+
+tv     <- dge$samples$TimeVar
+des_sp <- stats::model.matrix(~ splines::ns(tv, df = 3))
+
+fit_sp <- edgeR::voomLmFit(dge, des_sp, block = dge$samples$ID_Band)
+cat("within-bird correlation (spline design):",
+    round(fit_sp$correlation, 3), "\n")
+fit_sp <- limma::eBayes(fit_sp, robust = TRUE)
+
+res_spline <- limma::topTable(fit_sp, coef = 2:4, number = Inf, sort.by = "none")
+res_grp    <- omni
+
+n_spline <- sum(res_spline$adj.P.Val < CONFIG$fdr_cut)
+n_grp    <- sum(res_grp$adj.P.Val    < CONFIG$fdr_cut)
+
+cat("\nSpline model:", n_spline, "genes\n")
+cat("Group model: ", n_grp, "genes\n")
+cat("Overlap:     ",
+    length(intersect(rownames(res_spline)[res_spline$adj.P.Val < CONFIG$fdr_cut],
+                     rownames(res_grp)[res_grp$adj.P.Val < CONFIG$fdr_cut])), "\n")
+
+sp_out <- data.frame(
+  GeneID     = rownames(res_spline),
+  Symbol     = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(res_spline)),
+  logCPM     = res_spline$AveExpr,
+  F_spline   = res_spline$F,
+  FDR_spline = res_spline$adj.P.Val,
+  F_group    = res_grp$F,
+  FDR_group  = res_grp$adj.P.Val,
+  row.names = NULL, check.names = FALSE
+)
+utils::write.csv(sp_out[order(sp_out$FDR_spline), ],
+                 file.path(CONFIG$out_dir, "Spline_vs_group.csv"),
+                 row.names = FALSE)
 ```
 
 # Scatter Plot
@@ -409,7 +454,7 @@ panel_labs <- c(Rec2h_vs_Control  = "+2 h",
                 Rec2wk_vs_Control = "+2 wk")
 
 rev_df <- do.call(rbind, lapply(names(panel_labs), function(cn) {
-  data.frame(GeneID   = rownames(focus)[sig],
+  data.frame(GeneID   = rownames(omni)[sig],
              Heat_LFC = heat_lfc[sig],
              Rec_LFC  = per_con[[cn]]$logFC[sig],
              Panel    = factor(panel_labs[cn], levels = panel_labs))
@@ -453,24 +498,38 @@ utils::write.csv(slope_tab[, c("Panel", "Slope", "SE", "R2")],
 #  trajectory clustering
 
 
-```{r clustering, eval = CONFIG$do_clustering, fig.width = 9, fig.height = 6}
-sig_genes <- rownames(focus)[sig]
-stopifnot(length(sig_genes) > CONFIG$n_clusters)
+```{r clustering, , fig.width = 9, fig.height = 6}
 
-## Note on set size: with the focus contrast rather than an omnibus test, this
-## gene set is small (tens, not thousands). k-means on that few genes is
-## unstable - treat any clusters as illustrative, not as discovered trajectory
-## classes.
+source("https://raw.githubusercontent.com/Ylefol/TimeSeriesAnalysis/master/R/clusterGenomics.R")
+args(part)
+
+sig_genes <- rownames(omni)[sig]
+stopifnot(length(sig_genes) > CONFIG$part_minclus)
+
 grp_means <- t(apply(logcpm[sig_genes, , drop = FALSE], 1,
                      function(y) tapply(y, dge$samples$group, mean)))
 grp_z <- t(scale(t(grp_means)))              # z-scoring removes amplitude
 grp_z <- grp_z[stats::complete.cases(grp_z), , drop = FALSE]
 cat("Genes clustered:", nrow(grp_z), "of", length(sig_genes), "significant\n")
 
-km <- stats::kmeans(grp_z, centers = CONFIG$n_clusters, nstart = 50, iter.max = 100)
+part_res <- part(grp_z,
+                 minSize     = CONFIG$part_minclus,
+                 B           = CONFIG$part_recursion,
+                 dist.method = "euclidean",
+                 linkage     = "average")
 
-clust_df <- do.call(rbind, lapply(seq_len(CONFIG$n_clusters), function(k) {
-  m    <- grp_z[km$cluster == k, , drop = FALSE]
+cl <- part_res$lab.hatK
+cat("PART clusters:", part_res$hatK,
+    "| outlier genes:", length(part_res$outliers), "\n")
+print(table(cl))
+
+keep  <- cl != 0
+grp_z <- grp_z[keep, , drop = FALSE]
+cl    <- cl[keep]
+
+
+clust_df <- do.call(rbind, lapply(sort(unique(cl)), function(k) {
+  m    <- grp_z[cl == k, , drop = FALSE]
   sd_k <- if (nrow(m) > 1) apply(m, 2, stats::sd) else rep(0, ncol(m))
   data.frame(Treatment = factor(CONFIG$treat_labels[colnames(grp_z)],
                                 levels = CONFIG$treat_labels),
@@ -493,6 +552,9 @@ p_clust
 
 ggplot2::ggsave(file.path(CONFIG$out_dir, "Trajectory_clusters.png"),
                 p_clust, width = 9, height = 6, dpi = 300)
+utils::write.csv(data.frame(GeneID = rownames(grp_z), Cluster = cl),
+                 file.path(CONFIG$out_dir, "PART_clusters.csv"),
+                 row.names = FALSE)
 ```
 
 # Outputs
@@ -506,8 +568,6 @@ already sorted by FDR.
 
 ```{r outputs}
 
-## All seven contrasts, wide. per_con tables are all sort.by = "none", so rows
-## are aligned across contrasts and can be cbind-ed directly.
 gene_ids <- rownames(per_con[[1]])
 stopifnot(all(vapply(per_con, function(x) identical(rownames(x), gene_ids),
                      logical(1))))
