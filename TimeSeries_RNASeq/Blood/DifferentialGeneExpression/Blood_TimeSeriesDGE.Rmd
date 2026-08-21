@@ -42,7 +42,6 @@ rm(list = ls(all = TRUE))
 library(edgeR)
 library(limma)
 library(ggplot2)
-
 ```
 
 # CONFIG
@@ -73,14 +72,23 @@ CONFIG <- list(
 
   focus_contrast  = "Heat_vs_Control",
 
+  ## Degrees of freedom for the natural spline over log1p(hours)
+  spline_df       = 3,
+
   ## ID_Bands to label on the PCA plot. 
   flag_bands      = numeric(0),
 
-  ## For Cluster Analysis - Ignore for now (Need to think more on whether this is the right way to go about this)
-
+  ## Clustering. PART returns the number of clusters; minSize is the floor on
+  ## cluster size, part_recursion the number of bootstraps at each split.
   do_clustering   = TRUE,
-  part_minclus    = 50,
+  part_minclus    = 25,
   part_recursion  = 100,
+
+  ## Contrasts whose significant genes seed the clustering
+   cluster_seed_contrasts = c("Heat_vs_Control", "Rec2h_vs_Control",
+                             "Rec24h_vs_Control", "Rec2wk_vs_Control",
+                             "Rec2h_vs_Heat", "Rec24h_vs_Rec2h",
+                             "Rec2wk_vs_Rec24h"),
 
   seed            = 1234 # Specified so seed doesn't change when running GSEA multiple times
 )
@@ -229,8 +237,9 @@ appear in group E via their own `D` draw.
 
 `block = ID_Band` in the model below is what handles that. It does not assume
 every bird was sampled repeatedly: a bird with a single sample is a block of one,
-has no within-block pair, and is treated as independent. The block applies only to the
-B <-> E contrast.
+has no within-block pair, and is treated as independent. The consensus
+correlation enters the fit globally, so it affects the standard errors of every
+contrast, not only the ones spanning the B <-> E pair.
 
 ```{r pool-groups}
 
@@ -387,58 +396,82 @@ names(per_con) <- colnames(con)
 cat("\nDEGs per contrast (FDR <", CONFIG$fdr_cut, "):\n")
 print(vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)))
 
-## Gene set carried into the scatter and the clustering below.
+## Gene set carried into the scatter below.
 stopifnot(CONFIG$focus_contrast %in% names(per_con))
 focus <- per_con[[CONFIG$focus_contrast]]
 sig   <- focus$adj.P.Val < CONFIG$fdr_cut
 cat("\nFocus contrast:", CONFIG$focus_contrast, "-", sum(sig), "genes\n")
 
-omni <- limma::topTable(fit_con, coef = 1:4, number = Inf, sort.by = "none")
-sig  <- omni$adj.P.Val < CONFIG$fdr_cut
-
-
 ```
 
-# Spline model
+# Spline model: the same seven contrasts
+
+Fit a spline on log1p(hours) rather than as a five-level
+factor design. the contrasts are built by evaluating the fitted curve at each timepoint and
+differencing those fitted values — giving the same seven comparisons as above,
+estimated under a smooth model instead of independent group means as the factor model
+
 
 ```{r spline-model}
 
-tv     <- dge$samples$TimeVar
-des_sp <- stats::model.matrix(~ splines::ns(tv, df = 3))
+tv       <- dge$samples$TimeVar
+ns_basis <- splines::ns(tv, df = CONFIG$spline_df)
+
+des_sp <- cbind(Intercept = 1, ns_basis)
+colnames(des_sp) <- c("Intercept", paste0("ns", seq_len(ncol(ns_basis))))
 
 fit_sp <- edgeR::voomLmFit(dge, des_sp, block = dge$samples$ID_Band)
 cat("within-bird correlation (spline design):",
     round(fit_sp$correlation, 3), "\n")
-fit_sp <- limma::eBayes(fit_sp, robust = TRUE)
 
-res_spline <- limma::topTable(fit_sp, coef = 2:4, number = Inf, sort.by = "none")
-res_grp    <- omni
+## Fitted-value design row for each of the five timepoints.
+tp_tv <- log1p(CONFIG$time_map)
+X_tp  <- cbind(1, stats::predict(ns_basis, tp_tv))
+rownames(X_tp) <- names(CONFIG$time_map)
+colnames(X_tp) <- colnames(des_sp)
 
-n_spline <- sum(res_spline$adj.P.Val < CONFIG$fdr_cut)
-n_grp    <- sum(res_grp$adj.P.Val    < CONFIG$fdr_cut)
-
-cat("\nSpline model:", n_spline, "genes\n")
-cat("Group model: ", n_grp, "genes\n")
-cat("Overlap:     ",
-    length(intersect(rownames(res_spline)[res_spline$adj.P.Val < CONFIG$fdr_cut],
-                     rownames(res_grp)[res_grp$adj.P.Val < CONFIG$fdr_cut])), "\n")
-
-sp_out <- data.frame(
-  GeneID     = rownames(res_spline),
-  Symbol     = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(res_spline)),
-  logCPM     = res_spline$AveExpr,
-  F_spline   = res_spline$F,
-  FDR_spline = res_spline$adj.P.Val,
-  F_group    = res_grp$F,
-  FDR_group  = res_grp$adj.P.Val,
-  row.names = NULL, check.names = FALSE
+pairs_tp <- list(
+  Heat_vs_Control   = c("B", "A"),
+  Rec2h_vs_Control  = c("C", "A"),
+  Rec24h_vs_Control = c("D", "A"),
+  Rec2wk_vs_Control = c("E", "A"),
+  Rec2h_vs_Heat     = c("C", "B"),
+  Rec24h_vs_Rec2h   = c("D", "C"),
+  Rec2wk_vs_Rec24h  = c("E", "D")
 )
-utils::write.csv(sp_out[order(sp_out$FDR_spline), ],
-                 file.path(CONFIG$out_dir, "Spline_vs_group.csv"),
+
+con_sp <- vapply(pairs_tp, function(p) X_tp[p[1], ] - X_tp[p[2], ],
+                 numeric(ncol(X_tp)))
+rownames(con_sp) <- colnames(des_sp)
+
+fit_sp_con <- limma::eBayes(limma::contrasts.fit(fit_sp, con_sp), robust = TRUE)
+
+per_con_sp <- lapply(colnames(con_sp), function(cn)
+  limma::topTable(fit_sp_con, coef = cn, number = Inf, sort.by = "none"))
+names(per_con_sp) <- colnames(con_sp)
+
+cat("\nSpline-model DEGs per contrast (FDR <", CONFIG$fdr_cut, "):\n")
+print(vapply(per_con_sp, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)))
+
+## Side-by-side with the factor model.
+compare_tab <- data.frame(
+  Contrast = names(per_con),
+  Factor   = vapply(per_con,    function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)),
+  Spline   = vapply(per_con_sp, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)),
+  Overlap  = vapply(names(per_con), function(cn)
+               length(intersect(
+                 rownames(per_con[[cn]])[per_con[[cn]]$adj.P.Val       < CONFIG$fdr_cut],
+                 rownames(per_con_sp[[cn]])[per_con_sp[[cn]]$adj.P.Val < CONFIG$fdr_cut])),
+               numeric(1)),
+  row.names = NULL
+)
+print(compare_tab)
+utils::write.csv(compare_tab,
+                 file.path(CONFIG$out_dir, "Spline_vs_factor_contrasts.csv"),
                  row.names = FALSE)
 ```
 
-# Scatter Plot
+# Scatter Plot - Test (Ignore)
 
 Genes significant in the focus contrast (`Heat_vs_Control` by default). Each
 panel plots that gene's heat response on the x-axis against its state at one
@@ -454,7 +487,7 @@ panel_labs <- c(Rec2h_vs_Control  = "+2 h",
                 Rec2wk_vs_Control = "+2 wk")
 
 rev_df <- do.call(rbind, lapply(names(panel_labs), function(cn) {
-  data.frame(GeneID   = rownames(omni)[sig],
+  data.frame(GeneID   = rownames(focus)[sig],
              Heat_LFC = heat_lfc[sig],
              Rec_LFC  = per_con[[cn]]$logFC[sig],
              Panel    = factor(panel_labs[cn], levels = panel_labs))
@@ -498,35 +531,40 @@ utils::write.csv(slope_tab[, c("Panel", "Slope", "SE", "R2")],
 #  trajectory clustering
 
 
-```{r clustering, , fig.width = 9, fig.height = 6}
+
+```{r clustering, fig.width = 9, fig.height = 6}
 
 source("https://raw.githubusercontent.com/Ylefol/TimeSeriesAnalysis/master/R/clusterGenomics.R")
 args(part)
 
-sig_genes <- rownames(omni)[sig]
+sig_genes <- unique(unlist(lapply(CONFIG$cluster_seed_contrasts, function(cn) {
+  tt <- per_con[[cn]]
+  rownames(tt)[tt$adj.P.Val < CONFIG$fdr_cut]
+})))
+cat("Seed contrasts:", paste(CONFIG$cluster_seed_contrasts, collapse = " U "),
+    "\nGenes seeding the clustering:", length(sig_genes), "\n")
 stopifnot(length(sig_genes) > CONFIG$part_minclus)
 
 grp_means <- t(apply(logcpm[sig_genes, , drop = FALSE], 1,
                      function(y) tapply(y, dge$samples$group, mean)))
 grp_z <- t(scale(t(grp_means)))              # z-scoring removes amplitude
 grp_z <- grp_z[stats::complete.cases(grp_z), , drop = FALSE]
-cat("Genes clustered:", nrow(grp_z), "of", length(sig_genes), "significant\n")
+cat("Genes clustered:", nrow(grp_z), "of", length(sig_genes), "\n")
 
 part_res <- part(grp_z,
-                 minSize     = CONFIG$part_minclus,
-                 B           = CONFIG$part_recursion,
+                 minSize = CONFIG$part_minclus,
+                 B       = CONFIG$part_recursion,
                  dist.method = "euclidean",
                  linkage     = "average")
 
 cl <- part_res$lab.hatK
 cat("PART clusters:", part_res$hatK,
-    "| outlier genes:", length(part_res$outliers), "\n")
+    "| unplaced genes:", length(part_res$outliers), "\n")
 print(table(cl))
 
 keep  <- cl != 0
 grp_z <- grp_z[keep, , drop = FALSE]
 cl    <- cl[keep]
-
 
 clust_df <- do.call(rbind, lapply(sort(unique(cl)), function(k) {
   m    <- grp_z[cl == k, , drop = FALSE]
@@ -543,7 +581,7 @@ p_clust <- ggplot2::ggplot(clust_df, ggplot2::aes(Treatment, Mean, group = 1)) +
                        fill = "steelblue", alpha = 0.25) +
   ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
   ggplot2::geom_point(colour = "steelblue", size = 2) +
-  ggplot2::facet_wrap(~ Cluster, scales = "free_y") +
+  ggplot2::facet_wrap(~ Cluster) +
   ggplot2::labs(x = NULL, y = "z-scored mean logCPM",
                 ) +
   ggplot2::theme_bw() +
@@ -568,6 +606,8 @@ already sorted by FDR.
 
 ```{r outputs}
 
+## All seven contrasts, wide. per_con tables are all sort.by = "none", so rows
+## are aligned across contrasts and can be cbind-ed directly.
 gene_ids <- rownames(per_con[[1]])
 stopifnot(all(vapply(per_con, function(x) identical(rownames(x), gene_ids),
                      logical(1))))
@@ -589,6 +629,20 @@ w <- function(x, f) utils::write.csv(x, file.path(CONFIG$out_dir, f),
                                      row.names = FALSE)
 
 w(out, "Timeseries_contrast_results.csv")
+
+## Same table for the spline model.
+sp_tab <- do.call(cbind, lapply(names(per_con_sp), function(cn)
+  stats::setNames(per_con_sp[[cn]][, c("logFC", "P.Value", "adj.P.Val")],
+                  paste0(c("logFC_", "PValue_", "FDR_"), cn))))
+
+out_sp <- data.frame(
+  GeneID = rownames(per_con_sp[[1]]),
+  Symbol = sub("^gene-([^|]+)\\|.*$", "\\1", rownames(per_con_sp[[1]])),
+  logCPM = per_con_sp[[1]]$AveExpr,
+  sp_tab,
+  row.names = NULL, check.names = FALSE
+)
+w(out_sp, "Timeseries_contrast_results_spline.csv")
 
 ## Per-contrast significant gene lists
 for (cn in names(per_con)) {
