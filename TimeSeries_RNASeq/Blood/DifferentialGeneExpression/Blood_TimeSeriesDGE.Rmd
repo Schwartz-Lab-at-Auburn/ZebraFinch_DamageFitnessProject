@@ -19,7 +19,7 @@ One question:
      (B-A doubles as the first adjacent step, Control -> Heat.)
 
 REPEATED MEASURES:
-9 birds: assigned to the 2-week recovery group (E) - contributed two draws (same bird sampled at Heat and then recovery) The other 40 birds contributed a single draw each (49 birds, 58 samples total). Models are fit with block = ID_Band, which treats those 9 paired birds as correlated and every other bird as independent. The blocking therefore affects only the B <-> E relationship. 
+9 birds: assigned to the 2-week recovery group (E) - contributed two draws (same bird sampled at Heat and then recovery) The other 40 birds contributed a single draw each (49 birds, 58 samples total). Models are fit with block = ID_Band, which treats those 9 paired birds as correlated and every other bird as independent.  
 
 Notes: 
   Occasion (from the sample name ZF_<band>_<occasion>_BL):
@@ -361,10 +361,7 @@ cat("within-bird correlation (group design):",
 
 ## Contrasts use the A–E letters
 # A (Control), B (Heat), C (2-Hr Recovery), D (24-hr recovery), E (2-Week Recovery)
-#
-# Every one of these is between-bird EXCEPT the B <-> E relationship, where 9
-# birds contribute a sample to each side. Do not describe C - B or D - C as
-# within-bird recovery.
+
 
 con <- limma::makeContrasts(
   ## vs Control 
