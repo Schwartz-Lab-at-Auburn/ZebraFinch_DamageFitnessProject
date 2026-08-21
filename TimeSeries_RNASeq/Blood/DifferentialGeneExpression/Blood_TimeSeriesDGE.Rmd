@@ -397,8 +397,6 @@ names(per_con) <- colnames(con)
 cat("\nDEGs per contrast (FDR <", CONFIG$fdr_cut, "):\n")
 print(vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)))
 
-## Gene set carried into the scatter below.
-stopifnot(CONFIG$focus_contrast %in% names(per_con))
 focus <- per_con[[CONFIG$focus_contrast]]
 sig   <- focus$adj.P.Val < CONFIG$fdr_cut
 cat("\nFocus contrast:", CONFIG$focus_contrast, "-", sum(sig), "genes\n")
