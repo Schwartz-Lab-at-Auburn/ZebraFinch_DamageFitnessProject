@@ -607,7 +607,7 @@ already sorted by FDR.
 
 ```{r outputs}
 
-## All seven contrasts, wide. per_con tables are all sort.by = "none", so rows
+## All eight contrasts, wide. per_con tables are all sort.by = "none", so rows
 ## are aligned across contrasts and can be cbind-ed directly.
 gene_ids <- rownames(per_con[[1]])
 stopifnot(all(vapply(per_con, function(x) identical(rownames(x), gene_ids),
