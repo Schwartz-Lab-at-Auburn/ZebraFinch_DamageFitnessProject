@@ -220,7 +220,7 @@ if (length(missing_cols)) {
 
 # Filter sample draws into timepoint groups
 
-An `H` draw was taken *during heat* from a bird assigned to recover later, so it
+An `H` draw was taken *during heat* from a bird assigned to recovery group E, so it
 belongs in the Heat group at 5 h; not in the group the bird was eventually killed
 in. Group B therefore contains two kinds of sample: the `D` draws of the 10 birds
 assigned to Heat, and the `H` draws of 9 E birds. Those same 9 E birds also
@@ -254,6 +254,9 @@ pat <- data.frame(
                             function(t) t[1])),
   n         = unname(tapply(meta$Group, meta$ID_Band, length))
 )
+
+#Sanity Check: 
+  
 cat("\nAssigned treatment x observed group pattern (one row per bird):\n")
 print(table(pat$Treatment, pat$Groups))
 
@@ -305,10 +308,8 @@ p_pca
 ggplot2::ggsave(file.path(CONFIG$out_dir, "PCA_timecourse_with_outliers.png"),
                 p_pca, width = 7, height = 5, dpi = 300)
 
-## Group B is the only group holding two draw occasions (10 D draws from
-## Heat-assigned birds, 9 H draws from E-assigned birds). Shape-coding by
-## occasion shows whether those two subsets sit on top of each other. If they
-## separate, every contrast involving B inherits that separation.
+
+## Shapes by occasion shows where those two draws (repeated measures) lie.
 p_pca_B <- ggplot2::ggplot(subset(pca_df, Treatment == "B"),
                            ggplot2::aes(PC1, PC2, shape = Occasion)) +
   ggplot2::geom_point(size = 3) +
@@ -341,7 +342,7 @@ utils::write.csv(dist_tab, file.path(CONFIG$out_dir, "PCA_centroid_distances.csv
 
 # Model: group means,  F test and all contrasts
 
-Five-level observed-stage model. `Group` is the biological state the sample
+`Group` is the biological condition the sample
 represents, not the bird's assigned endpoint — so an E bird's `H` draw sits in
 group B and its own `D` draw sits in group E.
 
@@ -492,7 +493,7 @@ ggplot2::ggsave(file.path(CONFIG$out_dir, "Trajectory_clusters.png"),
 
 # Outputs
 
-One row per tested gene: the omnibus FDR, then logFC and FDR for each
+One row per tested gene: the FDR, then logFC and FDR for each
 adjacent contrast. 
 
 ```{r outputs}
@@ -532,12 +533,6 @@ w <- function(x, f) utils::write.csv(x, file.path(CONFIG$out_dir, f),
 w(res_grp_out,                                     "Factor_all_genes.csv")
 w(res_grp_out[res_grp_out$FDR < CONFIG$fdr_cut, ], "Factor_significant_genes.csv")
 
-## `out` is the combined per-gene table (omnibus FDR + every adjacent contrast).
-## Not written to disk - add a w(out, "<filename>") call here with whatever
-## filename the downstream pathway-enrichment script reads.
-
-cat("\nGenes tested:", nrow(out),
-    "\n  omnibus sig:", sum(out$FDR_factor < CONFIG$fdr_cut), "\n")
 
 ```
 
