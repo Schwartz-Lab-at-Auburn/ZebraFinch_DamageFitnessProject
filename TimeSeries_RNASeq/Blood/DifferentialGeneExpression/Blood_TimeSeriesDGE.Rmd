@@ -662,9 +662,6 @@ for (cn in names(per_con)) {
   w(sig_tab, paste0("Sig_", cn, ".csv"))
 }
 
-cat("\nGenes tested:", nrow(out), "\n")
-cat("Significant per contrast:\n")
-print(vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)))
 
 ```
 
