@@ -9,14 +9,12 @@ output: html_document
 SCRIPT Info:
 
 Differential expression across a five-point time-series (A-E).
-One question:
 
   Where along the time-series does expression differ, and from what?
      -> Four vs-Control contrasts (B-A, C-A, D-A, E-A): is the bird different
         from baseline at this timepoint?
      -> Three adjacent-timepoint contrasts (C-B, D-C, E-D): what changed since
         the previous timepoint?
-     (B-A doubles as the first adjacent step, Control -> Heat.)
 
 REPEATED MEASURES:
 9 birds: assigned to the 2-week recovery group (E) - contributed two draws (same bird sampled at Heat and then recovery) The other 40 birds contributed a single draw each (49 birds, 58 samples total). Models are fit with block = ID_Band, which treats those 9 paired birds as correlated and every other bird as independent.  
@@ -58,7 +56,7 @@ CONFIG <- list(
 
   drop_ribofree   = TRUE,           # exclude Ribo-free library re-preps
 
-  # Occasion is the timepoint blood was DRAWN, not the treatment group:
+  # Occasion is the timepoint blood was drawn, not the treatment group:
   #   D = terminal draw at the bird's own assigned timepoint
   #   H = draw taken during heat exposure.
   keep_occasions  = c("D", "H"),
@@ -362,7 +360,6 @@ cat("within-bird correlation (group design):",
 ## Contrasts use the A–E letters
 # A (Control), B (Heat), C (2-Hr Recovery), D (24-hr recovery), E (2-Week Recovery)
 
-
 con <- limma::makeContrasts(
   ## vs Control 
   Heat_vs_Control   = B - A,
@@ -381,9 +378,6 @@ fit_con <- limma::eBayes(limma::contrasts.fit(fit_0, con), robust = TRUE)
 step_set <- c("Heat_vs_Control", "Rec2h_vs_Heat",
               "Rec24h_vs_Rec2h", "Rec2wk_vs_Rec24h", "Rec2wk_vs_Control")
 
-## One moderated t test per contrast. Each is FDR-corrected within itself, so
-## the counts below are not comparable to each other as evidence strength -
-## a contrast with more signal gets a more permissive BH threshold.
 per_con <- lapply(colnames(con), function(cn)
   limma::topTable(fit_con, coef = cn, number = Inf, sort.by = "none"))
 names(per_con) <- colnames(con)
@@ -404,12 +398,8 @@ cat("\nFocus contrast:", CONFIG$focus_contrast, "-", sum(sig), "genes\n")
 Genes significant in the focus contrast (`Heat_vs_Control` by default). Each
 panel plots that gene's heat response on the x-axis against its state at one
 recovery timepoint on the y-axis, both relative to Control. A point on the
-dashed y = x line has not recovered at all; a point on y = 0 has returned to
-baseline.
+dashed y = x line has not recovered at all
 
-Both axes share group A, so they are positively correlated through it and the
-fitted slope is biased upward — treat it as descriptive, not as an unbiased
-estimate of the fraction of the response retained.
 
 ```{r scatter, fig.width = 10, fig.height = 4}
 
