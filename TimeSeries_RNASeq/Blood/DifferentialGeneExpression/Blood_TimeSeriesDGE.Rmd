@@ -668,6 +668,3 @@ print(vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1))
 
 ```
 
-```{r session}
-sessionInfo()
-```
