@@ -20,7 +20,7 @@ REPEATED MEASURES:
 
 Notes: 
   Occasion (from the sample name ZF_<band>_<occasion>_BL):
-      B = baseline draw (2 wk pre-heat)   <- EXCLUDED here -> keep_occasions
+      B = baseline draw (2 wk pre-heat)   <- excluded here -> keep_occasions
       D = draw at the bird's own assigned endpoint (day of dissection)
       H = draw taken during heat exposure
       
