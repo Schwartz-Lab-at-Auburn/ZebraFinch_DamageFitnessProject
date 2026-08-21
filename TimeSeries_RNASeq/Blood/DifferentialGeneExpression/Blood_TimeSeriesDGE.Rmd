@@ -437,7 +437,7 @@ pairs_tp <- list(
   Rec2h_vs_Heat     = c("C", "B"),
   Rec24h_vs_Rec2h   = c("D", "C"),
   Rec2wk_vs_Rec24h  = c("E", "D"),
-  Rec2wk_vs_Heat    = c("E", "B"),
+  Rec2wk_vs_Heat    = c("E", "B")
 )
 
 con_sp <- vapply(pairs_tp, function(p) X_tp[p[1], ] - X_tp[p[2], ],
@@ -456,8 +456,9 @@ print(vapply(per_con_sp, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(
 ## Side-by-side with the factor model.
 compare_tab <- data.frame(
   Contrast = names(per_con),
-  Factor   = vapply(per_con,    function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)),
-  Spline   = vapply(per_con_sp, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)),
+  Factor   = vapply(per_con, function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)),
+  Spline   = vapply(per_con_sp[names(per_con)],
+                    function(x) sum(x$adj.P.Val < CONFIG$fdr_cut), numeric(1)),
   Overlap  = vapply(names(per_con), function(cn)
                length(intersect(
                  rownames(per_con[[cn]])[per_con[[cn]]$adj.P.Val       < CONFIG$fdr_cut],
