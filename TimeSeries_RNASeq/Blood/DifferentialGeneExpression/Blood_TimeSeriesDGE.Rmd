@@ -599,16 +599,13 @@ utils::write.csv(data.frame(GeneID = rownames(grp_z), Cluster = cl),
 # Outputs
 
 `Timeseries_contrast_results.csv` — one row per tested gene, with logFC, raw p
-and FDR for all seven contrasts side by side. This is the table downstream
-scripts should read.
+and FDR for all eight contrasts side by side. 
 
 `Sig_<contrast>.csv` — the significant genes for each contrast that has any,
 already sorted by FDR.
 
 ```{r outputs}
 
-## All eight contrasts, wide. per_con tables are all sort.by = "none", so rows
-## are aligned across contrasts and can be cbind-ed directly.
 gene_ids <- rownames(per_con[[1]])
 stopifnot(all(vapply(per_con, function(x) identical(rownames(x), gene_ids),
                      logical(1))))
