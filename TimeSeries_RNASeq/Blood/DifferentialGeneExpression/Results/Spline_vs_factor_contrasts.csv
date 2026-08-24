@@ -1,0 +1,8 @@
+"Contrast","Factor","Spline","Overlap"
+"Heat_vs_Control",71,0,0
+"Rec2h_vs_Control",0,0,0
+"Rec24h_vs_Control",0,0,0
+"Rec2wk_vs_Control",0,0,0
+"Rec2h_vs_Heat",480,107,16
+"Rec24h_vs_Rec2h",0,728,0
+"Rec2wk_vs_Rec24h",0,0,0
