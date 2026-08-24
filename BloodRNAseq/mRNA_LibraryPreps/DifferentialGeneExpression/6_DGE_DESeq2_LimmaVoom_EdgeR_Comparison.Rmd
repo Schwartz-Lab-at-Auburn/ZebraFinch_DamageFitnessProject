@@ -326,18 +326,100 @@ library(DESeq2)
 #> packageVersion("DESeq2")
 #[1] ‘1.52.0’
 
+## Interaction
+
+# Build DESeq2 object
+dds_interaction <- DESeqDataSetFromMatrix(
+  countData = Raw_Counts_AB,
+  colData   = ZF_Blood_sample_list,
+  design    = ~ 0 + treatment + sex + treatment:sex
+)
+
+# Perform a pre-filtering to remove rows (genes) that have less, on average across individuals, 100 reads mapped per individual. 49 individuals x 100 reads = 4900 reads. A gene must have at least 4900 reads total to be included for analysis.
+
+keep_int_deseq <- dds_interaction[ rowSums(counts(dds_interaction)) > 4900, ]
+cat("Genes after filtering:", nrow(keep_int_deseq), "\n\n")
+
+dds_int_deseq <- DESeq(keep_int_deseq)
+
+res_interaction <- results(
+    dds_int_deseq,
+    name = "treatmentHeat.sexmale"
+)
+
+summary(res_interaction)
+
+DEG_int_deseq <- as.data.frame(res_interaction)
+DEG_int_deseq$Gene_ID <- rownames(DEG_int_deseq)
+
+# Remove NA's
+DEG_int_deseq <- DEG_int_deseq[
+  !is.na(DEG_int_deseq$padj) & !is.na(DEG_int_deseq$log2FoldChange),
+]
+cat("Genes after NA removal:", nrow(DEG_int_deseq), "\n\n")
+
+# For GSEA and RRHO2 input
+write.csv(DEG_int_deseq, "DEG_int_deseq.csv", row.names = FALSE)
+
+# Subset DEG"s into upregulated and downregulated 
+sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
+sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 0, ]
+sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < 0, ]
+
+write.csv(sig_int_deseq, "sig_int_blood_deseq.csv", row.names = FALSE)
+write.csv(sig_int_deseq_up, "sig_int_deseq_blood_up.csv", row.names = FALSE)
+write.csv(sig_int_deseq_down, "sig_int_deseq_blood_down.csv", row.names = FALSE)
+
+cat("Interaction DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_int_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_int_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_int_deseq_down), "\n\n")
+
+stringent_sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.05, ]
+stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 0, ]
+stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < 0, ]
+
+cat("Interaction DEG Results 0.05 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
+cat("Upregulated in Heat:", nrow(stringent_sig_int_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(stringent_sig_int_deseq_down), "\n\n")
+
 ## Males only
+
+## Remove female samples
+AHDB1_AB_male <- ZF_Blood_sample_list[!grepl("^female$", ZF_Blood_sample_list$sex), ]
+head(AHDB1_AB_male)
+
+## Subset the countdata to only include female Control (A) and Heat (B) samples 
+samples_to_keep_male <- rownames(AHDB1_AB_male)
+
+length(intersect(samples_to_keep_male, colnames(keep_int_deseq)))
+
+all(samples_to_keep_male %in% colnames(keep_int_deseq))
+
+setdiff(samples_to_keep_male, colnames(keep_int_deseq))
+
+setdiff(colnames(keep_int_deseq), samples_to_keep_male)
+
+common_samples <- intersect(samples_to_keep_male, colnames(keep_int_deseq))
+
+Counts_AB_male <- keep_int_deseq[, common_samples]
+AHDB1_AB_male <- AHDB1_AB_male[common_samples, ]
+
+AHDB1_AB_male <- AHDB1_AB_male[colnames(Counts_AB_male), ]
+
+identical(rownames(AHDB1_AB_male), colnames(Counts_AB_male))
+
+# Extract count matrix
+counts_male <- counts(Counts_AB_male)
+coldata_male <- as.data.frame(colData(Counts_AB_male))
 
 # Build DESeq2 object
 dds_male <- DESeqDataSetFromMatrix(
-  countData = Counts_AB_Male,
-  colData   = AHDB1_AB_Male,
+  countData = counts_male,
+  colData   = coldata_male,
   design    = ~ 0 + treatment
 )
-
-keep_male_deseq <- rowSums(counts(dds_male)) >= 10
-dds_male <- dds_male[keep_male_deseq, ]
-cat("Genes after filtering:", nrow(dds_male), "\n\n")
 
 dds_male <- DESeq(dds_male)
 
@@ -384,19 +466,42 @@ cat("Total significant DEGs:", nrow(stringent_sig_male_deseq), "\n")
 cat("Upregulated in Heat:", nrow(stringent_sig_male_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(stringent_sig_male_deseq_down), "\n\n")
 
-
 ## Females only
+
+## Remove males samples
+AHDB1_AB_Female <- ZF_Blood_sample_list[!grepl("^male$", ZF_Blood_sample_list$sex), ]
+head(AHDB1_AB_Female)
+
+## Subset the countdata to only include female Control (A) and Heat (B) samples 
+samples_to_keep_female <- rownames(AHDB1_AB_Female)
+
+length(intersect(samples_to_keep_female, colnames(keep_int_deseq)))
+
+all(samples_to_keep_female %in% colnames(keep_int_deseq))
+
+setdiff(samples_to_keep_female, colnames(keep_int_deseq))
+
+setdiff(colnames(keep_int_deseq), samples_to_keep_female)
+
+common_samples <- intersect(samples_to_keep_female, colnames(keep_int_deseq))
+
+Counts_AB_Female <- keep_int_deseq[, common_samples]
+AHDB1_AB_Female <- AHDB1_AB_Female[common_samples, ]
+
+AHDB1_AB_Female <- AHDB1_AB_Female[colnames(Counts_AB_Female), ]
+
+identical(rownames(AHDB1_AB_Female), colnames(Counts_AB_Female))
+
+# Extract count matrix
+counts_female <- counts(Counts_AB_Female)
+coldata_female <- as.data.frame(colData(Counts_AB_Female))
 
 # Build DESeq2 object
 dds_female <- DESeqDataSetFromMatrix(
-  countData = Counts_AB_Female,
-  colData   = AHDB1_AB_Female,
+  countData = counts_female,
+  colData   = coldata_female,
   design    = ~ 0 + treatment
 )
-
-keep_female_deseq <- rowSums(counts(dds_female)) >= 10
-dds_female <- dds_female[keep_female_deseq, ]
-cat("Genes after filtering:", nrow(dds_female), "\n\n")
 
 dds_female <- DESeq(dds_female)
 
@@ -442,60 +547,6 @@ cat("Female-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_female_deseq), "\n")
 cat("Upregulated in Heat:", nrow(stringent_sig_female_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(stringent_sig_female_deseq_down), "\n\n")
-
-
-## Interaction
-
-# Build DESeq2 object
-dds_interaction <- DESeqDataSetFromMatrix(
-  countData = Raw_Counts_AB,
-  colData   = ZF_Blood_sample_list,
-  design    = ~ 0 + treatment + sex + treatment:sex
-)
-
-dds_interaction <- DESeq(dds_interaction)
-
-res_interaction <- results(
-    dds_interaction,
-    name = "treatmentHeat.sexmale"
-)
-
-summary(res_interaction)
-
-DEG_int_deseq <- as.data.frame(res_interaction)
-DEG_int_deseq$Gene_ID <- rownames(DEG_int_deseq)
-
-# Remove NA's
-DEG_int_deseq <- DEG_int_deseq[
-  !is.na(DEG_int_deseq$padj) & !is.na(DEG_int_deseq$log2FoldChange),
-]
-cat("Genes after NA removal:", nrow(DEG_int_deseq), "\n\n")
-
-# For GSEA and RRHO2 input
-write.csv(DEG_int_deseq, "DEG_int_deseq.csv", row.names = FALSE)
-
-# Subset DEG"s into upregulated and downregulated 
-sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
-sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 0, ]
-sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < 0, ]
-
-write.csv(sig_int_deseq, "sig_int_blood_deseq.csv", row.names = FALSE)
-write.csv(sig_int_deseq_up, "sig_int_deseq_blood_up.csv", row.names = FALSE)
-write.csv(sig_int_deseq_down, "sig_int_deseq_blood_down.csv", row.names = FALSE)
-
-cat("Interaction DEG Results 0.1 (DESeq2)\n")
-cat("Total significant DEGs:", nrow(sig_int_deseq), "\n")
-cat("Upregulated in Heat:", nrow(sig_int_deseq_up), "\n")
-cat("Downregulated in Heat:", nrow(sig_int_deseq_down), "\n\n")
-
-stringent_sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.05, ]
-stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 0, ]
-stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < 0, ]
-
-cat("Interaction DEG Results 0.05 (DESeq2)\n")
-cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
-cat("Upregulated in Heat:", nrow(stringent_sig_int_deseq_up), "\n")
-cat("Downregulated in Heat:", nrow(stringent_sig_int_deseq_down), "\n\n")
 
 ```
 
@@ -797,7 +848,7 @@ library(UpSetR)
 #sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
 
 #sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
-sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
 
 # Build lists
 up_list <- list(
