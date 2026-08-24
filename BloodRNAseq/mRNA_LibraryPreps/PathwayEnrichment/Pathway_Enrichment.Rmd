@@ -36,15 +36,15 @@ library(msigdbr)
 ```
 
 # CONFIG
-
+# Edit paths for your own
 ```{r}
 
 CONFIG <- list(
   # Input CSVs exported from the DESeq2 chunk of 6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison
   # After filtering out NAs, before determining significance
-  male_csv    = "DEG_male_deseq.csv",
-  female_csv  = "DEG_female_deseq.csv",
-  int_csv = "DEG_int_deseq.csv",
+  male_csv    = "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_male_deseq.csv",
+  female_csv  = "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_female_deseq.csv",
+  int_csv = "/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_int_deseq.csv",
 
   # Ensembl BioMart
   biomart_dataset = "tguttata_gene_ensembl",
@@ -229,7 +229,7 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
 
  ggsave(
     file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
-    p_male, width = 14, height = 10, dpi = 300
+    p_male, width = 14, height = 14, dpi = 300
   )
   print(p_male)
 } else {
@@ -281,7 +281,7 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
 
   ggsave(
     file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
-    p_female, width = 14, height = 10, dpi = 300
+    p_female, width = 14, height = 14, dpi = 300
   )
   print(p_female)
 } else {
@@ -333,7 +333,7 @@ if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
 
   ggsave(
     file.path(CONFIG$out_dir_int, "GSEA_KEGG_Interaction.png"),
-    p_int, width = 14, height = 10, dpi = 300
+    p_int, width = 14, height = 14, dpi = 300
   )
   print(p_int)
 } else {
@@ -481,7 +481,7 @@ if (length(go_male$plots) > 0) {
 
   ggsave(
     file.path(CONFIG$out_dir_male, "GO_GSEA_Male_combined.png"),
-    combined_go_male, width = 14, height = 8 * length(go_male$plots), dpi = 300
+    combined_go_male, width = 14, height = 14 * length(go_male$plots), dpi = 300
   )
   print(combined_go_male)
 } else {
@@ -510,7 +510,7 @@ if (length(go_female$plots) > 0) {
 
   ggsave(
     file.path(CONFIG$out_dir_female, "GO_GSEA_Female_combined.png"),
-    combined_go_female, width = 14, height = 8 * length(go_female$plots), dpi = 300
+    combined_go_female, width = 14, height = 14 * length(go_female$plots), dpi = 300
   )
   print(combined_go_female)
 } else {
@@ -539,7 +539,7 @@ if (length(go_int$plots) > 0) {
 
   ggsave(
     file.path(CONFIG$out_dir_int, "GO_GSEA_Interaction_combined.png"),
-    combined_go_int, width = 14, height = 8 * length(go_int$plots), dpi = 300
+    combined_go_int, width = 14, height = 14 * length(go_int$plots), dpi = 300
   )
   print(combined_go_int)
 } else {
@@ -605,7 +605,7 @@ female_gsea_results <- as.data.frame(female_hallmark_gsea)
   
   ggsave(
     file.path(CONFIG$out_dir_female, "GSEA_MSigDB_Female.png"),
-    p_f, width = 14, height = 10, dpi = 300
+    p_f, width = 14, height = 14, dpi = 300
   )
 ```
 
@@ -689,7 +689,7 @@ p
 
   ggsave(
     file.path(CONFIG$out_dir_female, "ORA_MSigDB_Female.png"),
-    p, width = 14, height = 10, dpi = 300
+    p, width = 14, height = 14, dpi = 300
   )
 ```
 
@@ -750,7 +750,7 @@ male_gsea_results <- as.data.frame(male_hallmark_gsea)
   
   ggsave(
     file.path(CONFIG$out_dir_male, "GSEA_MSigDB_Male.png"),
-    p_m,, width = 14, height = 10, dpi = 300
+    p_m,, width = 14, height = 14, dpi = 300
   )
 ```
 
@@ -836,7 +836,7 @@ p
 
   ggsave(
     file.path(CONFIG$out_dir_male, "ORA_MSigDB_Male.png"),
-    p, width = 14, height = 10, dpi = 300
+    p, width = 14, height = 14, dpi = 300
   )
 ```
 
@@ -897,7 +897,7 @@ int_gsea_results <- as.data.frame(int_hallmark_gsea)
   
   ggsave(
     file.path(CONFIG$out_dir_int, "GSEA_MSigDB_Interaction.png"),
-    p_i, width = 14, height = 10, dpi = 300
+    p_i, width = 14, height = 14, dpi = 300
   )
 ```
 
@@ -983,7 +983,7 @@ p
 
   ggsave(
     file.path(CONFIG$out_dir_int, "ORA_MSigDB_Interaction.png"),
-    p, width = 14, height = 10, dpi = 300
+    p, width = 14, height = 14, dpi = 300
   )
 ```
 
