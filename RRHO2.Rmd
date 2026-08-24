@@ -138,9 +138,9 @@ dev.off()
 # DESeq2 ran for each sex separately: = ~ 0 + treatment
 ```{r}
 # Read in Blood DESeq2 DGE data
-liver.res.females.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_female_deseq_allgenes.csv")
+liver.res.females.heat.df <- read_csv("LiverRNASeq/DGE/DEG_female_deseq_allgenes.csv")
 
-liver.res.males.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_male_deseq_allgenes.csv")
+liver.res.males.heat.df <- read_csv("LiverRNASeq/DGE/DEG_male_deseq_allgenes.csv")
 
 # Check intersection of gene lists
 male_genes <- liver.res.males.heat.df$Gene_ID
@@ -214,7 +214,7 @@ dev.off()
 ```{r}
 # Read in male DESeq2 DGE data
 blood.res.males.heat.df <- read_csv("BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_male_deseq.csv")
-liver.res.males.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_male_deseq_allgenes.csv")
+liver.res.males.heat.df <- read_csv("LiverRNASeq/DGE/DEG_male_deseq_allgenes.csv")
 
 # Check intersection of gene lists
 blood_male_genes <- blood.res.males.heat.df$Gene_ID
@@ -286,7 +286,7 @@ dev.off()
 ```{r}
 # Read in male DESeq2 DGE data
 blood.res.females.heat.df <- read_csv("BloodRNAseq/mRNA_LibraryPreps/DifferentialGeneExpression/DEG_female_deseq.csv")
-liver.res.females.heat.df <- read_csv("LiverRNASeq/Pathway Enrichment/DEG_female_deseq_allgenes.csv")
+liver.res.females.heat.df <- read_csv("LiverRNASeq/DGE/DEG_female_deseq_allgenes.csv")
 
 # Check intersection of gene lists
 blood_female_genes <- blood.res.females.heat.df$Gene_ID
