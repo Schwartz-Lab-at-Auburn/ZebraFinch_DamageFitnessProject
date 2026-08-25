@@ -385,6 +385,66 @@ cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
 cat("Upregulated in Heat:", nrow(stringent_sig_int_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(stringent_sig_int_deseq_down), "\n\n")
 
+## Full dataset - treatment
+
+# Build DESeq2 object
+dds_trt <- DESeqDataSetFromMatrix(
+  countData = Raw_Counts_AB,
+  colData   = ZF_Liver_sample_list,
+  design    = ~ 0 + treatment)
+
+dds_trt <- DESeq(dds_trt)
+
+res_trt <- results(
+    dds_trt,
+    name = "treatmentHeat"
+)
+
+summary(res_trt)
+
+DEG_trt_deseq <- as.data.frame(res_trt)
+DEG_trt_deseq$Gene_ID <- rownames(DEG_trt_deseq)
+
+# Subset DEG"s into upregulated and downregulated 
+sig_trt_deseq      <- DEG_trt_deseq[DEG_trt_deseq$padj < 0.1, ]
+sig_trt_deseq_up   <- sig_trt_deseq[sig_trt_deseq$log2FoldChange > 1, ]
+sig_trt_deseq_down <- sig_trt_deseq[sig_trt_deseq$log2FoldChange < -1, ]
+
+cat("Treatment DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_trt_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_trt_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_trt_deseq_down), "\n\n")
+
+## Full dataset - sex
+
+# Build DESeq2 object
+dds_sex <- DESeqDataSetFromMatrix(
+  countData = Raw_Counts_AB,
+  colData   = ZF_Liver_sample_list,
+  design    = ~ 0 + sex)
+
+dds_sex <- DESeq(dds_sex)
+
+res_sex <- results(
+    dds_sex,
+    name = "sexmale"
+)
+
+summary(res_sex)
+
+DEG_sex_deseq <- as.data.frame(res_sex)
+DEG_sex_deseq$Gene_ID <- rownames(DEG_sex_deseq)
+
+# Subset DEG"s into upregulated and downregulated 
+sig_sex_deseq      <- DEG_sex_deseq[DEG_sex_deseq$padj < 0.1, ]
+sig_sex_deseq_up   <- sig_sex_deseq[sig_sex_deseq$log2FoldChange > 1, ]
+sig_sex_deseq_down <- sig_sex_deseq[sig_sex_deseq$log2FoldChange < -1, ]
+
+cat("Sex DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_sex_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_sex_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_sex_deseq_down), "\n\n")
+
 ## Males only
 
 ## Remove female samples
@@ -1205,3 +1265,181 @@ pheatmap(
   breaks = seq(-2.5, 2.5, length.out = 101)
 )
 ```
+# Make a heatmap with DESeq2 adjusted p-values < 0.05 - Interaction Model
+# Ordered Sex -> Treatment
+```{r}
+library(pheatmap)
+
+vsd_all <- vst(dds_interaction, blind = FALSE)
+
+vsd_mat <- assay(vsd_all)
+
+# Combine gene names
+sig_genes <- rownames(stringent_sig_int_deseq)
+
+# Keep only genes present in your VST matrix
+sig_genes <- sig_genes[sig_genes %in% rownames(vsd_mat)]
+
+# Check how many genes are being plotted
+length(sig_genes)
+
+# Expression matrix containing BOTH males and females
+mat_sig <- vsd_mat[sig_genes, ]
+
+
+### Make the Heatmap
+# Scale each gene (row) to z-scores
+mat_scaled_sig <- t(scale(t(mat_sig)))
+
+# Optional sample annotation
+annotation_col <- data.frame(
+  Sex = colData(vsd_all)$sex,
+  Treatment = colData(vsd_all)$treatment
+)
+
+rownames(annotation_col) <- colnames(vsd_all)
+
+annotation_col <- annotation_col[colnames(mat_sig), , drop = FALSE]
+
+sample_order <- order(
+  annotation_col$Sex,
+  annotation_col$Treatment
+)
+
+# Reorder expression matrix
+mat_scaled_sig <- mat_scaled_sig[, sample_order]
+
+# Reorder annotation
+annotation_col <- annotation_col[sample_order, , drop = FALSE]
+
+annotation_colors <- list(
+    Treatment = c(
+    Control = "gray70",
+    Heat = "orange"
+  ),
+    Sex = c(
+    male = "darkgreen",
+    female = "deeppink"
+  )
+)
+
+# Heatmap
+pheatmap::pheatmap(
+  mat_scaled_sig,
+  
+  annotation_col = annotation_col,
+  annotation_colors = annotation_colors,
+  
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  
+  fontsize_row = 8,
+  border_color = NA,
+  
+  color = colorRampPalette(
+    c("#2166AC", "white", "#B2182B")
+  )(100),
+  
+  breaks = seq(-2.5, 2.5, length.out = 101)
+) 
+```
+
+# Make a heatmap with DESeq2 adjusted p-values < 0.05 - Interaction Model
+# Ordered Sex -> Treatment
+# Without W chromosome genes
+```{r}
+# Add chromosome column and remove Ws
+chromosome_map <- read_csv("/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/zebra_finch_GCF_048771995.1_gene_chromosome_map.csv")
+
+
+stringent_sig_int_deseq <- stringent_sig_int_deseq %>%
+  dplyr::mutate(.symbol = sub(".*\\|", "", Gene_ID)) %>%
+  dplyr::left_join(
+    chromosome_map %>% dplyr::select(symbol, chromosome),
+    by = c(".symbol" = "symbol")
+  ) %>%
+  dplyr::select(-.symbol)
+
+head(stringent_sig_int_deseq)
+
+stringent_sig_int_deseq <- stringent_sig_int_deseq %>%
+  dplyr::filter(stringent_sig_int_deseq$chromosome != "W")
+
+library(pheatmap)
+
+vsd_all <- vst(dds_interaction, blind = FALSE)
+vsd_mat <- assay(vsd_all)
+
+# Significant genes
+sig_genes <- stringent_sig_int_deseq$Gene_ID
+
+# Keep only genes present in VST matrix
+sig_genes <- sig_genes[sig_genes %in% rownames(vsd_mat)]
+
+# Check
+length(sig_genes)
+
+# Expression matrix
+mat_sig <- vsd_mat[sig_genes, ]
+
+# Scale each gene (row) to z-scores
+mat_scaled_sig <- t(scale(t(mat_sig)))
+# Optional sample annotation
+annotation_col <- data.frame(
+  Sex = colData(vsd_all)$sex,
+  Treatment = colData(vsd_all)$treatment
+)
+
+rownames(annotation_col) <- colnames(vsd_all)
+
+annotation_col <- annotation_col[colnames(mat_sig), , drop = FALSE]
+
+sample_order <- order(
+  annotation_col$Sex,
+  annotation_col$Treatment
+)
+
+# Reorder expression matrix
+mat_scaled_sig <- mat_scaled_sig[, sample_order]
+
+# Reorder annotation
+annotation_col <- annotation_col[sample_order, , drop = FALSE]
+
+annotation_colors <- list(
+    Treatment = c(
+    Control = "gray70",
+    Heat = "orange"
+  ),
+    Sex = c(
+    male = "darkgreen",
+    female = "deeppink"
+  )
+)
+
+# Heatmap
+pheatmap::pheatmap(
+  mat_scaled_sig,
+  
+  annotation_col = annotation_col,
+  annotation_colors = annotation_colors,
+  
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  
+  fontsize_row = 8,
+  border_color = NA,
+  
+  color = colorRampPalette(
+    c("#2166AC", "white", "#B2182B")
+  )(100),
+  
+  breaks = seq(-2.5, 2.5, length.out = 101)
+) 
+```
+

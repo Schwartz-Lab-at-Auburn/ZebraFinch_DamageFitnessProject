@@ -384,6 +384,66 @@ cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
 cat("Upregulated in Heat:", nrow(stringent_sig_int_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(stringent_sig_int_deseq_down), "\n\n")
 
+## Full dataset - treatment
+
+# Build DESeq2 object
+dds_trt <- DESeqDataSetFromMatrix(
+  countData = Raw_Counts_AB,
+  colData   = ZF_Blood_sample_list,
+  design    = ~ 0 + treatment)
+
+dds_trt <- DESeq(dds_trt)
+
+res_trt <- results(
+    dds_trt,
+    name = "treatmentHeat"
+)
+
+summary(res_trt)
+
+DEG_trt_deseq <- as.data.frame(res_trt)
+DEG_trt_deseq$Gene_ID <- rownames(DEG_trt_deseq)
+
+# Subset DEG"s into upregulated and downregulated 
+sig_trt_deseq      <- DEG_trt_deseq[DEG_trt_deseq$padj < 0.1, ]
+sig_trt_deseq_up   <- sig_trt_deseq[sig_trt_deseq$log2FoldChange > 1, ]
+sig_trt_deseq_down <- sig_trt_deseq[sig_trt_deseq$log2FoldChange < -1, ]
+
+cat("Treatment DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_trt_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_trt_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_trt_deseq_down), "\n\n")
+
+## Full dataset - sex
+
+# Build DESeq2 object
+dds_sex <- DESeqDataSetFromMatrix(
+  countData = Raw_Counts_AB,
+  colData   = ZF_Blood_sample_list,
+  design    = ~ 0 + sex)
+
+dds_sex <- DESeq(dds_sex)
+
+res_sex <- results(
+    dds_sex,
+    name = "sexmale"
+)
+
+summary(res_sex)
+
+DEG_sex_deseq <- as.data.frame(res_sex)
+DEG_sex_deseq$Gene_ID <- rownames(DEG_sex_deseq)
+
+# Subset DEG"s into upregulated and downregulated 
+sig_sex_deseq      <- DEG_sex_deseq[DEG_sex_deseq$padj < 0.1, ]
+sig_sex_deseq_up   <- sig_sex_deseq[sig_sex_deseq$log2FoldChange > 1, ]
+sig_sex_deseq_down <- sig_sex_deseq[sig_sex_deseq$log2FoldChange < -1, ]
+
+cat("Sex DEG Results 0.1 (DESeq2)\n")
+cat("Total significant DEGs:", nrow(sig_sex_deseq), "\n")
+cat("Upregulated in Heat:", nrow(sig_sex_deseq_up), "\n")
+cat("Downregulated in Heat:", nrow(sig_sex_deseq_down), "\n\n")
+
 ## Males only
 
 ## Remove female samples
