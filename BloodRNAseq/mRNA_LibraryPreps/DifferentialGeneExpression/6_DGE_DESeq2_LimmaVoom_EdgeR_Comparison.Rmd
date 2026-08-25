@@ -363,8 +363,8 @@ write.csv(DEG_int_deseq, "DEG_int_deseq.csv", row.names = FALSE)
 
 # Subset DEG"s into upregulated and downregulated 
 sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
-sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 0, ]
-sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < 0, ]
+sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 1, ]
+sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < -1, ]
 
 write.csv(sig_int_deseq, "sig_int_blood_deseq.csv", row.names = FALSE)
 write.csv(sig_int_deseq_up, "sig_int_deseq_blood_up.csv", row.names = FALSE)
@@ -376,8 +376,8 @@ cat("Upregulated in Heat:", nrow(sig_int_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(sig_int_deseq_down), "\n\n")
 
 stringent_sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.05, ]
-stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 0, ]
-stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < 0, ]
+stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 1, ]
+stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < -1, ]
 
 cat("Interaction DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
@@ -445,8 +445,8 @@ write.csv(DEG_male_deseq, "DEG_male_deseq.csv", row.names = FALSE)
 
 # Subset DEG"s into upregulated and downregulated 
 sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.1, ]
-sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 0, ]
-sig_male_deseq_down <- sig_male_deseq[sig_male_deseq$log2FoldChange < 0, ]
+sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 1, ]
+sig_male_deseq_down <- sig_male_deseq[sig_male_deseq$log2FoldChange < -1, ]
 
 write.csv(sig_male_deseq, "sig_male_blood_deseq.csv", row.names = FALSE)
 write.csv(sig_male_deseq_up, "sig_male_deseq_blood_up.csv", row.names = FALSE)
@@ -458,8 +458,8 @@ cat("Upregulated in Heat:", nrow(sig_male_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(sig_male_deseq_down), "\n\n")
 
 stringent_sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.05, ]
-stringent_sig_male_deseq_up   <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange > 0, ]
-stringent_sig_male_deseq_down <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange < 0, ]
+stringent_sig_male_deseq_up   <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange > 1, ]
+stringent_sig_male_deseq_down <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange < -1, ]
 
 cat("Male-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_male_deseq), "\n")
@@ -527,8 +527,8 @@ write.csv(DEG_female_deseq, "DEG_female_deseq.csv", row.names = FALSE)
 
 # Subset DEG's into upregulated and downregulated
 sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.1, ]
-sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 0, ]
-sig_female_deseq_down <- sig_female_deseq[sig_female_deseq$log2FoldChange < 0, ]
+sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 1, ]
+sig_female_deseq_down <- sig_female_deseq[sig_female_deseq$log2FoldChange < -1, ]
 
 write.csv(sig_female_deseq, "sig_female_blood_deseq.csv", row.names = FALSE)
 write.csv(sig_female_deseq_up, "sig_female_deseq_blood_up.csv", row.names = FALSE)
@@ -540,8 +540,8 @@ cat("Upregulated in Heat:", nrow(sig_female_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(sig_female_deseq_down), "\n\n")
 
 stringent_sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.05, ]
-stringent_sig_female_deseq_up   <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange > 0, ]
-stringent_sig_female_deseq_down <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange < 0, ]
+stringent_sig_female_deseq_up   <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange > 1, ]
+stringent_sig_female_deseq_down <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange < -1, ]
 
 cat("Female-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_female_deseq), "\n")
@@ -844,11 +844,11 @@ dev.off()
 library(UpSetR)
 
 # Make characters - Run once & then not again
-#sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
-#sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
+sig_male_deseq_up <- as.character(sig_male_deseq_up$Gene_ID)
+sig_female_deseq_up <- as.character(sig_female_deseq_up$Gene_ID)
 
-#sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
-#sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
+sig_male_deseq_down <- as.character(sig_male_deseq_down$Gene_ID)
+sig_female_deseq_down <- as.character(sig_female_deseq_down$Gene_ID)
 
 # Build lists
 up_list <- list(

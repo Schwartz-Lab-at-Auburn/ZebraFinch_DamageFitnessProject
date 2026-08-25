@@ -364,8 +364,8 @@ write.csv(DEG_int_deseq, "DEG_int_deseq.csv", row.names = FALSE)
 
 # Subset DEG"s into upregulated and downregulated 
 sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
-sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 0, ]
-sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < 0, ]
+sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 1, ]
+sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < -1, ]
 
 write.csv(sig_int_deseq, "sig_int_liver_deseq.csv", row.names = FALSE)
 write.csv(sig_int_deseq_up, "sig_int_deseq_liver_up.csv", row.names = FALSE)
@@ -377,8 +377,8 @@ cat("Upregulated in Heat:", nrow(sig_int_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(sig_int_deseq_down), "\n\n")
 
 stringent_sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.05, ]
-stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 0, ]
-stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < 0, ]
+stringent_sig_int_deseq_up   <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange > 1, ]
+stringent_sig_int_deseq_down <- stringent_sig_int_deseq[stringent_sig_int_deseq$log2FoldChange < -1, ]
 
 cat("Interaction DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_int_deseq), "\n")
@@ -422,10 +422,6 @@ dds_male <- DESeqDataSetFromMatrix(
   design    = ~ 0 + treatment
 )
 
-keep_male_deseq <- rowSums(counts(dds_male)) >= 10
-dds_male <- dds_male[keep_male_deseq, ]
-cat("Genes after filtering:", nrow(dds_male), "\n\n")
-
 dds_male <- DESeq(dds_male)
 
 res_male <- results(
@@ -447,8 +443,8 @@ cat("Genes after NA removal:", nrow(DEG_male_deseq), "\n\n")
 
 # Subset DEG"s into upregulated and downregulated 
 sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.1, ]
-sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 0, ]
-sig_male_deseq_down <- sig_male_deseq[sig_male_deseq$log2FoldChange < 0, ]
+sig_male_deseq_up   <- sig_male_deseq[sig_male_deseq$log2FoldChange > 1, ]
+sig_male_deseq_down <- sig_male_deseq[sig_male_deseq$log2FoldChange < -1, ]
 
 cat("Male-Only DEG Results 0.1 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(sig_male_deseq), "\n")
@@ -456,8 +452,8 @@ cat("Upregulated in Heat:", nrow(sig_male_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(sig_male_deseq_down), "\n\n")
 
 stringent_sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.05, ]
-stringent_sig_male_deseq_up   <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange > 0, ]
-stringent_sig_male_deseq_down <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange < 0, ]
+stringent_sig_male_deseq_up   <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange > 1, ]
+stringent_sig_male_deseq_down <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange < -1, ]
 
 cat("Male-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_male_deseq), "\n")
@@ -507,10 +503,6 @@ dds_female <- DESeqDataSetFromMatrix(
   design    = ~ 0 + treatment
 )
 
-keep_female_deseq <- rowSums(counts(dds_female)) >= 10
-dds_female <- dds_female[keep_female_deseq, ]
-cat("Genes after filtering:", nrow(dds_female), "\n\n")
-
 dds_female <- DESeq(dds_female)
 
 res_female <- results(
@@ -532,8 +524,8 @@ cat("Genes after NA removal:", nrow(DEG_female_deseq), "\n\n")
 
 # Subset DEG's into upregulated and downregulated
 sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.1, ]
-sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 0, ]
-sig_female_deseq_down <- sig_female_deseq[sig_female_deseq$log2FoldChange < 0, ]
+sig_female_deseq_up   <- sig_female_deseq[sig_female_deseq$log2FoldChange > 1, ]
+sig_female_deseq_down <- sig_female_deseq[sig_female_deseq$log2FoldChange < -1, ]
 
 cat("Female-Only DEG Results 0.1 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(sig_female_deseq), "\n")
@@ -541,8 +533,8 @@ cat("Upregulated in Heat:", nrow(sig_female_deseq_up), "\n")
 cat("Downregulated in Heat:", nrow(sig_female_deseq_down), "\n\n")
 
 stringent_sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.05, ]
-stringent_sig_female_deseq_up   <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange > 0, ]
-stringent_sig_female_deseq_down <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange < 0, ]
+stringent_sig_female_deseq_up   <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange > 1, ]
+stringent_sig_female_deseq_down <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange < -1, ]
 
 cat("Female-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_female_deseq), "\n")
