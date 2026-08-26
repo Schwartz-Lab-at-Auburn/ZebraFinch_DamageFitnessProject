@@ -43,6 +43,15 @@ ZF_Liver_sample_list <-(read.table("PHENO_DATA_Liver_Control_Heat.txt", header=T
 dim(ZF_Liver_sample_list)
 head(ZF_Liver_sample_list)
 ```
+## Remove 4812
+```{r}
+ZF_Liver_sample_list <- ZF_Liver_sample_list[
+  !grepl("^ZF_4812", rownames(ZF_Liver_sample_list)),
+]
+
+head(ZF_Liver_sample_list)
+```
+
 
 ## Subset the countdata to only include Control (A) and Heat (B) samples 
 
@@ -1324,6 +1333,10 @@ annotation_colors <- list(
 )
 
 # Heatmap
+# Heatmap
+png("/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/LiverRNASeq/DGE/Liver_Interaction_Heatmap.png", width = 6, height = 4, units = "in", res = 300)
+
+
 pheatmap::pheatmap(
   mat_scaled_sig,
   
@@ -1334,7 +1347,7 @@ pheatmap::pheatmap(
   cluster_cols = FALSE,
   
   show_rownames = FALSE,
-  show_colnames = TRUE,
+  show_colnames = FALSE,
   
   fontsize_row = 8,
   border_color = NA,
