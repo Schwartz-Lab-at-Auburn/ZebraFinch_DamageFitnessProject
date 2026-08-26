@@ -30,10 +30,16 @@ dim(ZF_Blood_sample_list)
 head(ZF_Blood_sample_list)
 ```
 
-## Remove Baseline samples
+## Remove Baseline samples & 4812
 
 ```{r}
 ZF_Blood_sample_list <- ZF_Blood_sample_list[!grepl("^Baseline", ZF_Blood_sample_list$treatment), ]
+head(ZF_Blood_sample_list)
+
+ZF_Blood_sample_list <- ZF_Blood_sample_list[
+  !grepl("^ZF_4812", rownames(ZF_Blood_sample_list)),
+]
+
 head(ZF_Blood_sample_list)
 ```
 
