@@ -1,6 +1,6 @@
 ---
 title: "6_DGE_DESeq2_LimmaVoom_EdgeR_Comparison"
-author: "Ali Amer, modified by Brynleigh Payne"
+author: "Ali Amer & Brynleigh Payne"
 date: "2026-06-22"
 output: md_document
 ---
@@ -1767,3 +1767,31 @@ ggplot(pca_df, aes(PC1, PC2, color = condition)) +
 
 ```
 
+# Make a Venn Diagram of the overlap of filtered genes in the interaction model, the male model, the female model
+```{r}
+# Extract gene IDs from each DESeq2 object
+genes_int <- rownames(keep_int_deseq)
+genes_female <- rownames(keep_female_deseq)
+genes_male <- rownames(keep_male_deseq)
+
+# Install if needed
+install.packages("ggvenn")
+
+library(ggvenn)
+
+# Create a list of gene sets
+gene_list <- list(
+  Interaction = genes_int,
+  Female = genes_female,
+  Male = genes_male
+)
+
+# Generate Venn diagram
+ggvenn(
+  gene_list,
+  fill_color = c("#E69F00", "#56B4E9", "#009E73"),
+  stroke_size = 0.8,
+  set_name_size = 5,
+  text_size = 4
+)
+```
