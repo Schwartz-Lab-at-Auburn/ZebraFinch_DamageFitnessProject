@@ -1,6 +1,6 @@
 ---
 title: "PathwayEnrichment"
-author: "Ali Amer, Modified by Brynleigh Payne"
+author: "Ali Amer & Brynleigh Payne"
 date: "2026-08-02"
 output: html_document
 ---
@@ -225,7 +225,16 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
  ggsave(
     file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
@@ -277,7 +286,16 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
   ggsave(
     file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
@@ -329,7 +347,16 @@ if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
   ggsave(
     file.path(CONFIG$out_dir_int, "GSEA_KEGG_Interaction.png"),
@@ -401,7 +428,16 @@ run_go_gsea_sex <- function(gene_list, out_dir, label) {
         facet_grid(
           . ~ .sign,
           labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-        )
+        ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
     } else {
       cat("  No significant", ont, "terms found for", label, ".\n\n")
     }
@@ -598,14 +634,23 @@ female_gsea_results <- as.data.frame(female_hallmark_gsea)
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in heat", suppressed = "Down in heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
 
   print(p_f)
   
   ggsave(
     file.path(CONFIG$out_dir_female, "GSEA_MSigDB_Female.png"),
-    p_f, width = 14, height = 14, dpi = 300
+    p_f, width = 10, height = 8, dpi = 300
   )
 ```
 
@@ -683,13 +728,22 @@ p <- dotplot(
     strip.text = element_text(size = 12, face = "bold"),
     axis.text.y = element_text(size = 10),
     panel.grid.minor = element_blank()
+  ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
   )
 
 p
 
   ggsave(
     file.path(CONFIG$out_dir_female, "ORA_MSigDB_Female.png"),
-    p, width = 14, height = 14, dpi = 300
+    p, width = 8, height = 8, dpi = 300
   )
 ```
 
@@ -743,14 +797,23 @@ male_gsea_results <- as.data.frame(male_hallmark_gsea)
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in heat", suppressed = "Down in heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
 
   print(p_m)
   
   ggsave(
     file.path(CONFIG$out_dir_male, "GSEA_MSigDB_Male.png"),
-    p_m,, width = 14, height = 14, dpi = 300
+    p_m,, width = 10, height = 8, dpi = 300
   )
 ```
 
@@ -830,13 +893,22 @@ p <- dotplot(
     strip.text = element_text(size = 12, face = "bold"),
     axis.text.y = element_text(size = 10),
     panel.grid.minor = element_blank()
+  ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
   )
 
 p
 
   ggsave(
     file.path(CONFIG$out_dir_male, "ORA_MSigDB_Male.png"),
-    p, width = 14, height = 14, dpi = 300
+    p, width = 8, height = 8, dpi = 300
   )
 ```
 
@@ -890,14 +962,23 @@ int_gsea_results <- as.data.frame(int_hallmark_gsea)
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
 
   print(p_i)
   
   ggsave(
     file.path(CONFIG$out_dir_int, "GSEA_MSigDB_Interaction.png"),
-    p_i, width = 14, height = 14, dpi = 300
+    p_i, width = 10, height = 8, dpi = 300
   )
 ```
 
@@ -977,13 +1058,22 @@ p <- dotplot(
     strip.text = element_text(size = 12, face = "bold"),
     axis.text.y = element_text(size = 10),
     panel.grid.minor = element_blank()
+  ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
   )
 
 p
 
   ggsave(
     file.path(CONFIG$out_dir_int, "ORA_MSigDB_Interaction.png"),
-    p, width = 14, height = 14, dpi = 300
+    p, width = 8, height = 8, dpi = 300
   )
 ```
 
@@ -1060,6 +1150,88 @@ mito_female <- run_mitocarta_gsea(gene_list_female_symbol, CONFIG$out_dir_female
 mito_int    <- run_mitocarta_gsea(gene_list_int_symbol,    CONFIG$out_dir_int,
                                   "Interaction", "Up",         "Down")
 
+```
+
+# ============================================================
+# Pathway GSEA summary grid: Cold-Dormancy vs Constant-Warmth
+# Rows = selected Hallmark + KEGG pathways (grouped by theme)
+# Columns = During, 3-wk Post, 3-mo Post
+# Fill = NES (positive = higher in Cold-Dormancy); grey = not significant (padj >= 0.05)
+# ============================================================
+```{r}
+library(here)
+#data_dir <- here(“Pathway_Enrichment”, “Data”)
+#fig_dir  <- here(“Pathway_Enrichment”, “Figures”)
+
+sex <- c(Male = "Male", Female = "Female")
+
+# Where each database’s CSVs live and how its files are named
+sources <- list(
+  Hallmark_F = list(dir = file.path("Results/GSEA/DESeq2_Female"), prefix = "GSEA_MSigDB_Female"),
+  KEGG_F     = list(dir = file.path("Results/GSEA/DESeq2_Female"), prefix = "GSE_KEGG_Female"),
+  GO_F     = list(dir = file.path("Results/GSEA/DESeq2_Female"), prefix = "GO_GSEA_Female"),
+  Hallmark_M = list(dir = file.path("Results/GSEA/DESeq2_Male"), prefix = "GSEA_MSigDB_Male"),
+  KEGG_M     = list(dir = file.path("Results/GSEA/DESeq2_Male"), prefix = "GSE_KEGG_Male"),
+  GO_M     = list(dir = file.path("Results/GSEA/DESeq2_Male"), prefix = "GO_GSEA_Male")
+)
+
+# Pathways to show, grouped by theme (edit freely).
+# Label = what appears on the slide; Source = which database it comes from.
+selected <- tribble(
+  ~Source,    ~ID,                                   ~Label,                          ~Theme,
+  "Hallmark", "HALLMARK_OXIDATIVE_PHOSPHORYLATION",            "Oxidative Phosphorylation",                "MSigDB Hallmark Gene-set",
+  "Hallmark", "HALLMARK_P53_PATHWAY",               "P53 Pathway",                "MSigDB Hallmark Gene-set",
+  "Hallmark", "HALLMARK_UV_RESPONSE_DN",            "UV Response",                "MSigDB Hallmark Gene-set",
+  "Hallmark", "HALLMARK_P53_PATHWAY",               "P53 Pathway",                "MSigDB Hallmark Gene-set",
+)
+
+# GSEA only writes significant sets, so a pathway missing from a file = not significant
+read_source <- function(src_name) {
+  src <- sources[[src_name]]
+  imap_dfr(sex, function(lbl, key) {
+    f <- file.path(src$dir, paste0(src$prefix, key, “.csv”))
+    if (!file.exists(f)) return(tibble())
+    read.csv(f) %>%
+      select(ID, NES, p.adjust) %>%
+      mutate(Source = src_name, sex = lbl)
+  })
+}
+res <- map_dfr(names(sources), read_source)
+
+plot_df <- selected %>%
+  crossing(sex = unname(sex)) %>%
+  left_join(res, by = c(“Source”, “ID”, “sex”)) %>%
+  mutate(
+    Label     = factor(Label, levels = rev(unique(selected$Label))),
+    Theme     = factor(Theme, levels = unique(selected$Theme)),
+    sex = factor(sex, levels = unname(timepoints)),
+    stars     = case_when(p.adjust < 0.001 ~ “***“,
+                          p.adjust < 0.01  ~ “**“,
+                          p.adjust < 0.05  ~ “*”,
+                          TRUE ~ “”)
+  )
+
+lim <- max(abs(plot_df$NES), na.rm = TRUE)
+
+p <- ggplot(plot_df, aes(sex, Label, fill = NES)) +
+  geom_tile(color = “white”, linewidth = 0.8) +
+  geom_text(aes(label = stars), size = 5, vjust = 0.75) +
+  scale_fill_gradient2(low = “#2166AC”, mid = “white”, high = “#B2182B”,
+                       midpoint = 0, limits = c(-lim, lim),
+                       na.value = “grey92”,
+                       name = “NES\n(Cold-Dormancy\nvs Constant-Warmth)“) +
+  facet_grid(Theme ~ ., scales = “free_y”, space = “free_y”, switch = “y”) +
+  labs(x = NULL, y = NULL,
+       caption = “Red = higher in Heat compared to Control; blue = lower. Grey = not significant (padj >= 0.05).\n* padj < 0.05, ** < 0.01, *** < 0.001") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid = element_blank(),
+        strip.placement = “outside”,
+        strip.text.y.left = element_text(angle = 0, face = “bold”, hjust = 1),
+        axis.text.x = element_text(face = “bold”),
+        plot.caption = element_text(size = 10, color = “grey40", hjust = 0))
+
+p
+ggsave(file.path(fig_dir, “Pathway_summary_grid.png”), p, width = 10, height = 8, dpi = 300)
 ```
 
 # NOT CURRENTLY USING
