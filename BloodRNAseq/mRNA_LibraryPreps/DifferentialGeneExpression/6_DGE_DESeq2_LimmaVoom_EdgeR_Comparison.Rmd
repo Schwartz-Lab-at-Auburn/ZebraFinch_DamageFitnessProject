@@ -345,6 +345,7 @@ dds_interaction <- DESeqDataSetFromMatrix(
 
 keep_int_deseq <- dds_interaction[ rowSums(counts(dds_interaction)) > 4900, ]
 cat("Genes after filtering:", nrow(keep_int_deseq), "\n\n")
+# Genes after filtering: 10149
 
 dds_int_deseq <- DESeq(keep_int_deseq)
 
@@ -372,6 +373,8 @@ sig_int_deseq      <- DEG_int_deseq[DEG_int_deseq$padj < 0.1, ]
 sig_int_deseq_up   <- sig_int_deseq[sig_int_deseq$log2FoldChange > 1, ]
 sig_int_deseq_down <- sig_int_deseq[sig_int_deseq$log2FoldChange < -1, ]
 
+# Do sanity check to plot normalized counts of the top most down or up regulated gene in the interaction - Tonia has code
+
 write.csv(sig_int_deseq, "sig_int_blood_deseq.csv", row.names = FALSE)
 write.csv(sig_int_deseq_up, "sig_int_deseq_blood_up.csv", row.names = FALSE)
 write.csv(sig_int_deseq_down, "sig_int_deseq_blood_down.csv", row.names = FALSE)
@@ -392,13 +395,22 @@ cat("Downregulated in Heat:", nrow(stringent_sig_int_deseq_down), "\n\n")
 
 ## Full dataset - treatment
 
+# USE FILTERED WHOLE DATASET, from interaction for every model
+
 # Build DESeq2 object
 dds_trt <- DESeqDataSetFromMatrix(
   countData = Raw_Counts_AB,
   colData   = ZF_Blood_sample_list,
   design    = ~ 0 + treatment)
 
-dds_trt <- DESeq(dds_trt)
+# Perform a pre-filtering to remove rows (genes) that have less, on average across individuals, 100 reads mapped per individual. 49 individuals x 100 reads = 4900 reads. A gene must have at least 4900 reads total to be included for analysis.
+
+keep_trt_deseq <- dds_trt[ rowSums(counts(dds_trt)) > 4900, ]
+cat("Genes after filtering:", nrow(keep_trt_deseq), "\n\n")
+# Genes after filtering: 10149
+
+
+dds_trt <- DESeq(keep_trt_deseq)
 
 res_trt <- results(
     dds_trt,
@@ -417,8 +429,11 @@ sig_trt_deseq_down <- sig_trt_deseq[sig_trt_deseq$log2FoldChange < -1, ]
 
 cat("Treatment DEG Results 0.1 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(sig_trt_deseq), "\n")
+# 10148
 cat("Upregulated in Heat:", nrow(sig_trt_deseq_up), "\n")
+# 10148
 cat("Downregulated in Heat:", nrow(sig_trt_deseq_down), "\n\n")
+# 0
 
 ## Full dataset - sex
 
@@ -428,7 +443,13 @@ dds_sex <- DESeqDataSetFromMatrix(
   colData   = ZF_Blood_sample_list,
   design    = ~ 0 + sex)
 
-dds_sex <- DESeq(dds_sex)
+# Perform a pre-filtering to remove rows (genes) that have less, on average across individuals, 100 reads mapped per individual. 49 individuals x 100 reads = 4900 reads. A gene must have at least 4900 reads total to be included for analysis.
+
+keep_sex_deseq <- dds_sex[ rowSums(counts(dds_sex)) > 4900, ]
+cat("Genes after filtering:", nrow(keep_sex_deseq), "\n\n")
+# Genes after filtering: 10149
+
+dds_sex <- DESeq(keep_sex_deseq)
 
 res_sex <- results(
     dds_sex,
@@ -447,8 +468,11 @@ sig_sex_deseq_down <- sig_sex_deseq[sig_sex_deseq$log2FoldChange < -1, ]
 
 cat("Sex DEG Results 0.1 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(sig_sex_deseq), "\n")
+# 10146
 cat("Upregulated in Heat:", nrow(sig_sex_deseq_up), "\n")
+# 10100
 cat("Downregulated in Heat:", nrow(sig_sex_deseq_down), "\n\n")
+# 46
 
 ## Males only
 
@@ -487,7 +511,13 @@ dds_male <- DESeqDataSetFromMatrix(
   design    = ~ 0 + treatment
 )
 
-dds_male <- DESeq(dds_male)
+# Perform a pre-filtering to remove rows (genes) that have less, on average across individuals, 100 reads mapped per individual. 20 individuals x 100 reads = 2000 reads. A gene must have at least 2000 reads total to be included for analysis.
+
+keep_male_deseq <- dds_male[ rowSums(counts(dds_male)) > 2000, ]
+cat("Genes after filtering:", nrow(keep_male_deseq), "\n\n")
+# Genes after filtering: 9814
+
+dds_male <- DESeq(keep_male_deseq)
 
 res_male <- results(
   dds_male,
@@ -520,8 +550,11 @@ write.csv(sig_male_deseq_down, "sig_male_deseq_blood_down.csv", row.names = FALS
 
 cat("Male-Only DEG Results 0.1 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(sig_male_deseq), "\n")
+# 958
 cat("Upregulated in Heat:", nrow(sig_male_deseq_up), "\n")
+# 194
 cat("Downregulated in Heat:", nrow(sig_male_deseq_down), "\n\n")
+# 67
 
 stringent_sig_male_deseq      <- DEG_male_deseq[DEG_male_deseq$padj < 0.05, ]
 stringent_sig_male_deseq_up   <- stringent_sig_male_deseq[stringent_sig_male_deseq$log2FoldChange > 1, ]
@@ -529,8 +562,11 @@ stringent_sig_male_deseq_down <- stringent_sig_male_deseq[stringent_sig_male_des
 
 cat("Male-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_male_deseq), "\n")
+# 525
 cat("Upregulated in Heat:", nrow(stringent_sig_male_deseq_up), "\n")
+# 157
 cat("Downregulated in Heat:", nrow(stringent_sig_male_deseq_down), "\n\n")
+# 38
 
 ## Females only
 
@@ -569,7 +605,13 @@ dds_female <- DESeqDataSetFromMatrix(
   design    = ~ 0 + treatment
 )
 
-dds_female <- DESeq(dds_female)
+# Perform a pre-filtering to remove rows (genes) that have less, on average across individuals, 100 reads mapped per individual. 29 individuals x 100 reads = 2900 reads. A gene must have at least 2000 reads total to be included for analysis.
+
+keep_female_deseq <- dds_female[ rowSums(counts(dds_female)) > 2900, ]
+cat("Genes after filtering:", nrow(keep_female_deseq), "\n\n")
+# Genes after filtering: 10092
+
+dds_female <- DESeq(keep_female_deseq)
 
 res_female <- results(
   dds_female,
@@ -602,8 +644,11 @@ write.csv(sig_female_deseq_down, "sig_female_deseq_blood_down.csv", row.names = 
 
 cat("Female-Only DEG Results 0.1 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(sig_female_deseq), "\n")
+# 642
 cat("Upregulated in Heat:", nrow(sig_female_deseq_up), "\n")
+# 188
 cat("Downregulated in Heat:", nrow(sig_female_deseq_down), "\n\n")
+# 18
 
 stringent_sig_female_deseq      <- DEG_female_deseq[DEG_female_deseq$padj < 0.05, ]
 stringent_sig_female_deseq_up   <- stringent_sig_female_deseq[stringent_sig_female_deseq$log2FoldChange > 1, ]
@@ -611,9 +656,11 @@ stringent_sig_female_deseq_down <- stringent_sig_female_deseq[stringent_sig_fema
 
 cat("Female-Only DEG Results 0.05 (DESeq2)\n")
 cat("Total significant DEGs:", nrow(stringent_sig_female_deseq), "\n")
+# 338
 cat("Upregulated in Heat:", nrow(stringent_sig_female_deseq_up), "\n")
+# 139
 cat("Downregulated in Heat:", nrow(stringent_sig_female_deseq_down), "\n\n")
-
+# 9
 ```
 
 ### DGE with Edge R ###
@@ -1187,6 +1234,65 @@ pheatmap(
 dev.off()
 ```
 
+# Checking expression (DGE & Raw gene counts) of sex-linked genes in males and females
+```{r}
+# Load chromosome data for each gene
+library(readr)
+chromosome_map <- read_csv("/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/zebra_finch_GCF_048771995.1_gene_chromosome_map.csv")
+
+
+# Differential gene exp - males < 0.05
+# Add chromosome column for each gene
+stringent_sig_male_deseq <- stringent_sig_male_deseq %>%
+  dplyr::mutate(.symbol = sub(".*\\|", "", Gene_ID)) %>%
+  dplyr::left_join(
+    chromosome_map %>% dplyr::select(symbol, chromosome),
+    by = c(".symbol" = "symbol")
+  ) %>%
+  dplyr::select(-.symbol)
+head(stringent_sig_male_deseq)
+
+
+# Raw gene counts
+# Add chromosome column for each gene
+Raw_Counts_AB <- as.data.frame(Raw_Counts_AB)
+
+Raw_Counts_AB <- Raw_Counts_AB %>%
+  rownames_to_column("Gene_ID") %>%
+  mutate(.symbol = sub(".*\\|", "", Gene_ID)) %>%
+  left_join(
+    chromosome_map %>%
+      select(symbol, chromosome),
+    by = c(".symbol" = "symbol")
+  ) %>%
+  select(-.symbol)
+
+# Subset for males
+# Identify male sample names
+male_samples <- rownames(ZF_Blood_sample_list)[
+  ZF_Blood_sample_list$sex == "male"
+]
+
+# Subset Raw_Counts_AB to Gene_ID, male samples, and chromosome
+Blood_Raw_Counts_AB_M_chr <- Raw_Counts_AB %>%
+  select(Gene_ID, all_of(male_samples), chromosome)
+
+write.csv(Blood_Raw_Counts_AB_M_chr, "Blood_Raw_Counts_AB_Male_chr.csv", row.names = FALSE)
+
+# Subset for females
+female_samples <- rownames(ZF_Blood_sample_list)[
+  ZF_Blood_sample_list$sex == "female"
+]
+
+# Subset Raw_Counts_AB to Gene_ID, female samples, and chromosome
+Blood_Raw_Counts_AB_F_chr <- Raw_Counts_AB %>%
+  select(Gene_ID, all_of(female_samples), chromosome)
+
+write.csv(Blood_Raw_Counts_AB_F_chr, "Blood_Raw_Counts_AB_Female_chr.csv", row.names = FALSE)
+
+```
+
+
 # Make a heatmap with DESeq2 adjusted p-values < 0.05 - Interaction Model
 # Ordered Treatment -> Sex
 ```{r}
@@ -1272,3 +1378,158 @@ pheatmap(
   breaks = seq(-2.5, 2.5, length.out = 101)
 )
 ```
+
+###  Make a PCA from interaction model (top 100 of all genes)
+```{r}
+library(ggplot2)
+library(ggrepel)
+
+# Get gene IDs from the DESeq2 result row names
+genes <- rownames(DEG_int_deseq)
+
+# Take the top 500 genes
+top_genes <- genes[1:min(100, length(genes))]
+
+# Check
+length(top_genes)
+head(top_genes)
+
+# Match them to VSD matrix
+genes_vsd <- vsd_mat[
+  rownames(vsd_mat) %in% top_genes,
+  ,
+  drop = FALSE
+]
+
+dim(genes_vsd)
+
+pca <- prcomp(
+  t(genes_vsd),
+  scale. = TRUE
+)
+
+percentVar <- (pca$sdev^2 / sum(pca$sdev^2))
+
+dim(pca$x)
+
+colnames(colData(dds_interaction))
+
+condition <- interaction(
+  colData(dds_interaction)$sex,
+  colData(dds_interaction)$treatment,
+  sep = "_"
+)
+
+length(condition)
+table(condition)
+
+pca_df <- data.frame(
+  PC1 = pca$x[, 1],
+  PC2 = pca$x[, 2],
+  condition = condition,
+  sample = colnames(vsd_mat)
+)
+
+ggplot(pca_df, aes(PC1, PC2, color = condition)) +
+  geom_point(size = 4) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100, 1), "%")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100, 1), "%")) +
+  geom_text_repel(aes(label = sample)) +
+  scale_color_manual(values = c("female_Heat" = "purple",
+                                "female_Control" = "black",
+                                "male_Heat" = "green",
+                                "male_Control" = "blue")) +
+  labs(color = "Sex x Treatment") +
+  theme_bw()
+
+```
+
+# Make a PCA from interaction model (only sex-linked genes)
+```{r}
+# Load chromosome data for each gene
+library(readr)
+library(dplyr)
+library(tibble)
+chromosome_map <- read_csv("/Users/brynleighpayne/Downloads/ZebraFinch_DamageFitnessProject/zebra_finch_GCF_048771995.1_gene_chromosome_map.csv")
+
+DEG_int_deseq <- as.data.frame(DEG_int_deseq)
+
+DEG_int_deseq <- DEG_int_deseq %>%
+  # Extract the symbol from the existing Gene_ID column
+  mutate(.symbol = sub(".*\\|", "", Gene_ID)) %>% 
+  left_join(
+    chromosome_map %>% select(symbol, chromosome),
+    by = c(".symbol" = "symbol")
+  ) %>% 
+  select(-.symbol)
+
+# Keep only unique Gene_IDs
+DEG_int_deseq <- DEG_int_deseq %>%
+  filter(!duplicated(Gene_ID) & !duplicated(Gene_ID, fromLast = TRUE))
+
+# Get gene IDs from the DESeq2 result row names
+genes <- rownames(DEG_int_deseq)
+
+# Take the sex-linked genes
+DEG_int_deseq_ZW <- DEG_int_deseq %>%
+  filter(chromosome.x %in% c("W"))
+
+# Check
+length(DEG_int_deseq_ZW)
+head(DEG_int_deseq_ZW)
+
+# Get the Z/W Gene_IDs
+genes_ZW <- DEG_int_deseq_ZW$Gene_ID
+
+# Match Z/W genes to VSD matrix
+genes_vsd <- vsd_mat[
+  rownames(vsd_mat) %in% genes_ZW,
+  ,
+  drop = FALSE
+]
+
+# Check
+dim(genes_vsd)
+head(rownames(genes_vsd))
+
+pca <- prcomp(
+  t(genes_vsd),
+  scale. = TRUE
+)
+
+percentVar <- (pca$sdev^2 / sum(pca$sdev^2))
+
+dim(pca$x)
+
+colnames(colData(dds_interaction))
+
+condition <- interaction(
+  colData(dds_interaction)$sex,
+  colData(dds_interaction)$treatment,
+  sep = "_"
+)
+
+length(condition)
+table(condition)
+
+pca_df <- data.frame(
+  PC1 = pca$x[, 1],
+  PC2 = pca$x[, 2],
+  condition = condition,
+  sample = colnames(vsd_mat)
+)
+
+ggplot(pca_df, aes(PC1, PC2, color = condition)) +
+  geom_point(size = 4) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100, 1), "%")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100, 1), "%")) +
+  geom_text_repel(aes(label = sample)) +
+  scale_color_manual(values = c("female_Heat" = "purple",
+                                "female_Control" = "black",
+                                "male_Heat" = "green",
+                                "male_Control" = "blue")) +
+  labs(color = "Sex x Treatment") +
+  theme_bw()
+
+```
+
