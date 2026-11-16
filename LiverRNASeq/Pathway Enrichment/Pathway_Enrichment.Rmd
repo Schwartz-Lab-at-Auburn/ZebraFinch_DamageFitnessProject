@@ -1,6 +1,6 @@
 ---
 title: "PathwayEnrichment"
-author: "Ali Amer"
+author: "Ali Amer & Brynleigh Payne"
 date: "2026-07-02"
 output: html_document
 ---
@@ -222,16 +222,27 @@ if (!is.null(gseKEGG_male) && nrow(gseKEGG_male@result) > 0) {
     row.names = FALSE
   )
 
-  p_male <- dotplot(
-    gseKEGG_male,
-    showCategory = 20,
-    split = ".sign",
-    title = "Male DESeq2 GSEA KEGG"
-  ) +
-    facet_grid(
-      . ~ .sign,
-      labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
+p_male <- dotplot(
+  gseKEGG_male,
+  showCategory = 20,
+  split = ".sign",
+  title = "Male DESeq2 GSEA KEGG"
+) +
+  facet_grid(
+    . ~ .sign,
+    labeller = labeller(
+      .sign = c(activated = "Up in Heat", suppressed = "Down in Heat")
     )
+  ) +
+  theme(
+    text = element_text(size = 14),
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14)
+  )
 
   ggsave(
     file.path(CONFIG$out_dir_male, "GSE_KEGG_Male.png"),
@@ -284,7 +295,16 @@ if (!is.null(gseKEGG_female) && nrow(gseKEGG_female@result) > 0) {
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in Heat", suppressed = "Down in Heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 14),
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14)
+  )
 
   ggsave(
     file.path(CONFIG$out_dir_female, "GSE_KEGG_Female.png"),
@@ -336,7 +356,16 @@ if (!is.null(gseKEGG_int) && nrow(gseKEGG_int@result) > 0) {
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 14),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
   ggsave(
     file.path(CONFIG$out_dir_int, "GSE_KEGG_Interaction.png"),
@@ -456,7 +485,16 @@ run_go_gsea_int <- function(gene_list, out_dir, label) {
         facet_grid(
           . ~ .sign,
           labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
-        )
+        ) +
+  theme(
+    text = element_text(size = 14),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
     } else {
       cat("  No significant", ont, "terms found for", label, ".\n\n")
     }
@@ -604,14 +642,23 @@ female_gsea_results <- as.data.frame(female_hallmark_gsea)
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in heat", suppressed = "Down in heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
 
   print(p_f)
   
   ggsave(
     file.path(CONFIG$out_dir_female, "GSEA_MSigDB_Female.png"),
-    p_f, width = 14, height = 14, dpi = 300
+    p_f, width = 10, height = 8, dpi = 300
   )
 ```
 
@@ -687,13 +734,22 @@ p <- dotplot(
     strip.text = element_text(size = 12, face = "bold"),
     axis.text.y = element_text(size = 10),
     panel.grid.minor = element_blank()
+  ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
   )
 
 p
 
   ggsave(
     file.path(CONFIG$out_dir_female, "ORA_MSigDB_Female.png"),
-    p, width = 14, height = 14, dpi = 300
+    p, width = 8, height = 8, dpi = 300
   )
 ```
 
@@ -746,14 +802,23 @@ male_gsea_results <- as.data.frame(male_hallmark_gsea)
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up in heat", suppressed = "Down in heat"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
 
   print(p_m)
   
   ggsave(
     file.path(CONFIG$out_dir_male, "GSEA_MSigDB_Male.png"),
-    p_m, width = 14, height = 14, dpi = 300
+    p_m, width = 10, height = 8, dpi = 300
   )
 ```
 
@@ -829,13 +894,22 @@ p <- dotplot(
     strip.text = element_text(size = 12, face = "bold"),
     axis.text.y = element_text(size = 10),
     panel.grid.minor = element_blank()
+  ) +
+  theme(
+    text = element_text(size = 22),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 22),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
   )
 
 p
 
   ggsave(
     file.path(CONFIG$out_dir_male, "ORA_MSigDB_Male.png"),
-    p, width = 14, height = 14, dpi = 300
+    p, width = 8, height = 8, dpi = 300
   )
 ```
 
@@ -891,7 +965,16 @@ int_gsea_results <- as.data.frame(int_hallmark_gsea)
     facet_grid(
       . ~ .sign,
       labeller = labeller(.sign = c(activated = "Up", suppressed = "Down"))
-    )
+    ) +
+  theme(
+    text = element_text(size = 14),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
+  )
 
   print(p_i)
   
@@ -973,6 +1056,15 @@ p <- dotplot(
     strip.text = element_text(size = 12, face = "bold"),
     axis.text.y = element_text(size = 10),
     panel.grid.minor = element_blank()
+  ) +
+  theme(
+    text = element_text(size = 20),
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.text = element_text(size = 22),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20)
   )
 
 p
